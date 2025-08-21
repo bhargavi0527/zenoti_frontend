@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import Sidebar from '../components/Layouts/sidebar';
+import Header from '../components/Layouts/Header';
 
 function Admin() {
   const [currentDate] = useState(new Date().toLocaleDateString('en-US', {
@@ -10,62 +12,12 @@ function Admin() {
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Left Sidebar */}
-      <div className="w-16 bg-blue-900 flex flex-col items-center py-4 space-y-6">
-        <div className="w-8 h-8 bg-white rounded flex items-center justify-center">
-          <svg className="w-5 h-5 text-blue-900" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
-          </svg>
-        </div>
-        <div className="w-8 h-8 bg-white rounded flex items-center justify-center">
-          <svg className="w-5 h-5 text-blue-900" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-        </div>
-        <div className="w-8 h-8 bg-white rounded flex items-center justify-center">
-          <svg className="w-5 h-5 text-blue-900" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M8 7V3a2 2 0 012-2h4.586A1 1 0 0116 2.586L19.414 6A1 1 0 0119 7H15a2 2 0 01-2-2z"/>
-          </svg>
-        </div>
-        <div className="w-8 h-8 bg-white rounded flex items-center justify-center">
-          <svg className="w-5 h-5 text-blue-900" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"/>
-          </svg>
-        </div>
-        <div className="w-8 h-8 bg-white rounded flex items-center justify-center">
-          <svg className="w-5 h-5 text-blue-900" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
-          </svg>
-        </div>
-      </div>
+      <Sidebar />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Oliva - Corporate Training Center</h1>
-              <p className="text-gray-600">Admin Dashboard</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
-                </svg>
-              </div>
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
-                </svg>
-              </div>
-              <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/>
-                </svg>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Header />
 
         {/* Content */}
         <div className="flex-1 p-6 space-y-6">
