@@ -1,4 +1,32 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+
+// Fetch centers from API
+async function fetchCenters() {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/centers/', {
+      method: 'GET',
+      headers: {
+        'accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const centers = await response.json();
+    return centers.map(center => ({
+      id: center.id,
+      name: center.name,
+      address: center.address,
+      city: center.city,
+      phone: center.phone
+    }));
+  } catch (error) {
+    console.error('Error fetching centers:', error);
+    return [];
+  }
+}
 
 function formatDateLong(date) {
   const formatter = new Intl.DateTimeFormat(undefined, {
@@ -27,18 +55,51 @@ export default function AppointmentHeader({
   onPrevDate = () => {},
   onNextDate = () => {},
   fullBleedFixed = false,
-  trainingCenters = [
-    'Hyderabad',
-    'Delhi',
-    'Chennai',
-    'Kochi',
-    'Pune'
-  ],
-  selectedTrainingCenter = 'Corporate Training Center',
+  trainingCenters = [],
+  selectedTrainingCenter = '',
   onTrainingCenterChange = () => {},
   orientation = 'horizontal',
   onOrientationChange = () => {}
 }) {
+  // State for centers with loading and error handling
+  const [centers, setCenters] = useState([]);
+  const [centersLoading, setCentersLoading] = useState(true);
+  const [centersError, setCentersError] = useState(null);
+  const [selectedCenter, setSelectedCenter] = useState(selectedTrainingCenter);
+
+  // Fetch centers on component mount
+  useEffect(() => {
+    const loadCenters = async () => {
+      setCentersLoading(true);
+      setCentersError(null);
+      try {
+        const fetchedCenters = await fetchCenters();
+        setCenters(fetchedCenters);
+        
+        // Set default selected center if none is selected
+        if (!selectedCenter && fetchedCenters.length > 0) {
+          const defaultCenter = fetchedCenters[0].name;
+          setSelectedCenter(defaultCenter);
+          onTrainingCenterChange(defaultCenter);
+        }
+      } catch (error) {
+        console.error('Failed to load centers:', error);
+        setCentersError('Failed to load centers');
+        setCenters([]);
+      } finally {
+        setCentersLoading(false);
+      }
+    };
+
+    loadCenters();
+  }, [selectedCenter, onTrainingCenterChange]);
+
+  // Handle center selection change
+  const handleCenterChange = (centerName) => {
+    setSelectedCenter(centerName);
+    onTrainingCenterChange(centerName);
+  };
+
   const wrapperClassName = fullBleedFixed
     ? 'w-screen fixed top-0 inset-x-0 z-40'
     : 'w-full';
@@ -101,22 +162,35 @@ export default function AppointmentHeader({
           {/* Right action icons and location */}
           <div className="flex items-center gap-4">
             <div className="relative">
-              <select
-                className="appearance-none bg-white/10 text-white/95 text-sm h-8 pl-3 pr-8 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300"
-                value={selectedTrainingCenter}
-                onChange={(e) => onTrainingCenterChange(e.target.value)}
-              >
-                {trainingCenters.map((c) => (
-                  <option key={c} value={c} className="text-blue-900">
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/80">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </span>
+              {centersLoading ? (
+                <div className="bg-white/10 text-white/95 text-sm h-8 pl-3 pr-8 rounded-md flex items-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Loading centers...
+                </div>
+              ) : centersError ? (
+                <div className="bg-red-500/20 text-red-200 text-sm h-8 pl-3 pr-8 rounded-md flex items-center">
+                  Failed to load centers
+                </div>
+              ) : (
+                <>
+                  <select
+                    className="appearance-none bg-white/10 text-white/95 text-sm h-8 pl-3 pr-8 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    value={selectedCenter}
+                    onChange={(e) => handleCenterChange(e.target.value)}
+                  >
+                    {centers.map((c) => (
+                      <option key={c.id} value={c.name} className="text-blue-900">
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/80">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>

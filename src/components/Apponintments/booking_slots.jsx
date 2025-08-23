@@ -46,7 +46,7 @@ export default function BookingSlots({
     return labels;
   }, [startHour, endHour, slotMinutes]);
 
-  const resources = activeTab === 'rooms' ? rooms : doctors;
+  const resources = activeTab === 'rooms' ? rooms : doctors.map(d => d.name || d);
   const getResourceAppointments = (resource) => appointments.filter((a) => a.resource === resource);
 
   const onDragOver = (e) => e.preventDefault();

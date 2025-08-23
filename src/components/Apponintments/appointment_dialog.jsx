@@ -17,6 +17,45 @@ function timeOptions(totalSlots, startHour, slotMinutes) {
   }));
 }
 
+// Guest creation API function
+async function createGuest(guestData, selectedCenter) {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/guests/', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        center_id: selectedCenter?.id || "851e63e9-6332-4a72-bf24-7a3d035e0f21",
+        center_name: selectedCenter?.name || "Oliva Banjara Hills",
+        username: guestData.username,
+        first_name: guestData.first_name,
+        middle_name: guestData.middle_name,
+        last_name: guestData.last_name,
+        email: guestData.email,
+        phone_no: guestData.phone_no,
+        home_no: guestData.home_no,
+        gender: guestData.gender,
+        date_of_birth: guestData.date_of_birth,
+        is_minor: guestData.is_minor,
+        nationality: guestData.nationality,
+        language: guestData.language
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Error creating guest:', error);
+    throw error;
+  }
+}
+
 export default function AppointmentDialog({
   open,
   onClose,
@@ -25,6 +64,8 @@ export default function AppointmentDialog({
   resource,
   rooms = [],
   doctors = [],
+  services = [],
+  selectedCenter = null,
   startHour = 9,
   endHour = 20,
   slotMinutes = 15,
@@ -39,11 +80,18 @@ export default function AppointmentDialog({
   // Guest fields
   const [mobile, setMobile] = useState(initial?.guestPhone || '+91');
   const [first, setFirst] = useState(initial?.guestFirstName || '');
+  const [middle, setMiddle] = useState(initial?.guestMiddleName || '');
   const [last, setLast] = useState(initial?.guestLastName || '');
   const [email, setEmail] = useState(initial?.guestEmail || '');
   const [gender, setGender] = useState(initial?.guestGender || '');
   const [referral, setReferral] = useState(initial?.referral || '');
   const [isMinor, setIsMinor] = useState(initial?.isMinor || false);
+  const [dateOfBirth, setDateOfBirth] = useState(initial?.dateOfBirth || '');
+  const [nationality, setNationality] = useState(initial?.nationality || 'Indian');
+  const [language, setLanguage] = useState(initial?.language || 'English');
+  const [homeNo, setHomeNo] = useState(initial?.homeNo || '+91');
+  const [username, setUsername] = useState(initial?.username || '');
+  const [isCreatingGuest, setIsCreatingGuest] = useState(false);
 
   // Appointment fields
   const [request, setRequest] = useState(initial?.request || 'Any');
@@ -54,13 +102,8 @@ export default function AppointmentDialog({
   const [notes, setNotes] = useState(initial?.notes || '');
   const [tab, setTab] = useState('service'); // 'service' | 'package'
 
-  // Simple dummy catalog for services
-  const serviceCatalog = [
-    { name: '17-OH Progesterone (OH-PROGESTERONE) EY', price: 800, equipment: 'N/A' },
-    { name: 'Thyroid Profile', price: 600, equipment: 'N/A' },
-    { name: 'Vitamin D Test', price: 900, equipment: 'N/A' }
-  ];
-  const [selectedService, setSelectedService] = useState(serviceCatalog[0]?.name || '');
+  // Use fetched services instead of hardcoded catalog
+  const [selectedService, setSelectedService] = useState(services[0]?.name || '');
   const [servicesAdded, setServicesAdded] = useState(initial?.services || []);
 
   useEffect(() => {
@@ -71,27 +114,72 @@ export default function AppointmentDialog({
 
   const endIdx = Math.min(totalSlots, startIdx + durationSlots);
 
-  const doSave = () => {
-    const labelBase = (servicesAdded[0]?.serviceName)
-      || (first || last ? `${first} ${last}`.trim() : (initial?.label || 'New Appointment'));
-    onSave({
-      id: initial?.id,
-      doctor,
-      request,
-      resource: room,
-      startIndex: startIdx,
-      durationSlots,
-      label: labelBase,
-      notes,
-      services: servicesAdded,
-      guestPhone: mobile,
-      guestFirstName: first,
-      guestLastName: last,
-      guestEmail: email,
-      guestGender: gender,
-      referral,
-      isMinor
-    });
+  const doSave = async () => {
+    try {
+      setIsCreatingGuest(true);
+      
+      // Create guest if we have guest information
+      let guestId = null;
+      if (first || last || email || mobile !== '+91') {
+        const guestData = {
+          username: username || `${first.toLowerCase()}${last.toLowerCase()}${Date.now()}`,
+          first_name: first,
+          middle_name: middle,
+          last_name: last,
+          email: email,
+          phone_no: mobile,
+          home_no: homeNo,
+          gender: gender,
+          date_of_birth: dateOfBirth,
+          is_minor: isMinor,
+          nationality: nationality,
+          language: language
+        };
+
+        try {
+          const guestResponse = await createGuest(guestData, selectedCenter);
+          guestId = guestResponse.id;
+          console.log('Guest created successfully:', guestResponse);
+        } catch (error) {
+          console.error('Failed to create guest:', error);
+          // Continue with appointment creation even if guest creation fails
+        }
+      }
+
+      const labelBase = (servicesAdded[0]?.serviceName)
+        || (first || last ? `${first} ${last}`.trim() : (initial?.label || 'New Appointment'));
+      
+      onSave({
+        id: initial?.id,
+        doctor,
+        request,
+        resource: room,
+        startIndex: startIdx,
+        durationSlots,
+        label: labelBase,
+        notes,
+        services: servicesAdded,
+        guestPhone: mobile,
+        guestFirstName: first,
+        guestLastName: last,
+        guestEmail: email,
+        guestGender: gender,
+        referral,
+        isMinor,
+        guestId,
+        // Additional guest fields
+        guestMiddleName: middle,
+        dateOfBirth,
+        nationality,
+        language,
+        homeNo,
+        username
+      });
+    } catch (error) {
+      console.error('Error saving appointment:', error);
+    } finally {
+      setIsCreatingGuest(false);
+    }
   };
 
   return (
@@ -108,7 +196,13 @@ export default function AppointmentDialog({
             {mode === 'edit' && onDelete && (
               <button className="px-3 py-1 bg-red-600 text-white rounded" onClick={() => onDelete(initial)}>Delete</button>
             )}
-            <button className="px-3 py-1 bg-blue-600 text-white rounded" onClick={doSave}>Save</button>
+            <button 
+              className={`px-3 py-1 rounded ${isCreatingGuest ? 'bg-gray-400 text-white' : 'bg-blue-600 text-white'}`} 
+              onClick={doSave}
+              disabled={isCreatingGuest}
+            >
+              {isCreatingGuest ? 'Creating...' : 'Save'}
+            </button>
             <button className="px-3 py-1 bg-gray-200 rounded" onClick={onClose}>X</button>
           </div>
         </div>
@@ -120,15 +214,27 @@ export default function AppointmentDialog({
             <div className="text-sm font-semibold mb-3">Guest</div>
             <div className="space-y-2 text-sm">
               <div>
+                <label className="block text-gray-600">Username</label>
+                <input className="w-full border rounded px-2 py-1" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Auto-generated if empty" />
+              </div>
+              <div>
                 <label className="block text-gray-600">Mobile</label>
                 <input className="w-full border rounded px-2 py-1" value={mobile} onChange={(e) => setMobile(e.target.value)} />
               </div>
               <div>
-                <label className="block text-gray-600">First</label>
+                <label className="block text-gray-600">Home Phone</label>
+                <input className="w-full border rounded px-2 py-1" value={homeNo} onChange={(e) => setHomeNo(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-gray-600">First Name</label>
                 <input className="w-full border rounded px-2 py-1" value={first} onChange={(e) => setFirst(e.target.value)} />
               </div>
               <div>
-                <label className="block text-gray-600">Last</label>
+                <label className="block text-gray-600">Middle Name</label>
+                <input className="w-full border rounded px-2 py-1" value={middle} onChange={(e) => setMiddle(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-gray-600">Last Name</label>
                 <input className="w-full border rounded px-2 py-1" value={last} onChange={(e) => setLast(e.target.value)} />
               </div>
               <div>
@@ -136,12 +242,38 @@ export default function AppointmentDialog({
                 <input className="w-full border rounded px-2 py-1" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
               <div>
+                <label className="block text-gray-600">Date of Birth</label>
+                <input type="date" className="w-full border rounded px-2 py-1" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
+              </div>
+              <div>
                 <label className="block text-gray-600">Gender</label>
                 <select className="w-full border rounded px-2 py-1" value={gender} onChange={(e) => setGender(e.target.value)}>
                   <option value="">Select Gender</option>
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                  <option value="other">Other</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-600">Nationality</label>
+                <select className="w-full border rounded px-2 py-1" value={nationality} onChange={(e) => setNationality(e.target.value)}>
+                  <option value="Indian">Indian</option>
+                  <option value="American">American</option>
+                  <option value="British">British</option>
+                  <option value="Canadian">Canadian</option>
+                  <option value="Australian">Australian</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-600">Language</label>
+                <select className="w-full border rounded px-2 py-1" value={language} onChange={(e) => setLanguage(e.target.value)}>
+                  <option value="English">English</option>
+                  <option value="Hindi">Hindi</option>
+                  <option value="Telugu">Telugu</option>
+                  <option value="Tamil">Tamil</option>
+                  <option value="Kannada">Kannada</option>
+                  <option value="Other">Other</option>
                 </select>
               </div>
               <div>
@@ -161,8 +293,11 @@ export default function AppointmentDialog({
               </div>
               {tab === 'service' ? (
                 <select className="w-80 border rounded px-2 py-1" value={selectedService} onChange={(e) => setSelectedService(e.target.value)}>
-                  {serviceCatalog.map((s) => (
-                    <option key={s.name} value={s.name}>{s.name}</option>
+                  <option value="">Select a service</option>
+                  {services.map((s) => (
+                    <option key={s.id} value={s.name}>
+                      {s.name} - ₹{s.price} ({s.duration} mins)
+                    </option>
                   ))}
                 </select>
               ) : (
@@ -182,7 +317,7 @@ export default function AppointmentDialog({
                 <select className="w-full border rounded px-2 py-1" value={doctor} onChange={(e) => setDoctor(e.target.value)}>
                   <option value="">Select</option>
                   {doctors.map((d) => (
-                    <option key={d} value={d}>{d}</option>
+                    <option key={d.id || d} value={d.name || d}>{d.name || d} {d.specialization ? `(${d.specialization})` : ''}</option>
                   ))}
                 </select>
               </div>
@@ -239,19 +374,24 @@ export default function AppointmentDialog({
               <button
                 className="px-3 py-2 bg-blue-600 text-white rounded"
                 onClick={() => {
-                  const found = serviceCatalog.find((s) => s.name === selectedService) || { price: 0, equipment: 'N/A' };
+                  const found = services.find((s) => s.name === selectedService);
+                  if (!found) return;
+                  
                   setServicesAdded((prev) => [
                     ...prev,
                     {
                       serviceName: selectedService,
+                      serviceId: found.id,
                       request,
                       doctor,
                       price: found.price,
                       room,
-                      equipment: found.equipment,
+                      duration: found.duration,
+                      description: found.description,
+                      category: found.category,
                       start: indexToTime(startIdx, startHour, slotMinutes),
-                      durationLabel: `${durationSlots * slotMinutes} mins`,
-                      end: indexToTime(endIdx, startHour, slotMinutes)
+                      durationLabel: `${found.duration} mins`,
+                      end: indexToTime(startIdx + Math.ceil(found.duration / slotMinutes), startHour, slotMinutes)
                     }
                   ]);
                 }}
@@ -267,25 +407,25 @@ export default function AppointmentDialog({
                 <div className="grid grid-cols-10 gap-2 text-xs font-semibold text-gray-700 border-b pb-2">
                   <div className="col-span-3">Service</div>
                   <div>Request</div>
-                  <div>Choose Your D</div>
+                  <div>Doctor</div>
                   <div>Price</div>
                   <div>Room</div>
-                  <div>Equipment</div>
-                  <div>Start</div>
                   <div>Duration</div>
+                  <div>Start</div>
                   <div>End</div>
+                  <div>Category</div>
                 </div>
                 {servicesAdded.map((s, idx) => (
                   <div key={`${s.serviceName}-${idx}`} className="grid grid-cols-10 gap-2 items-center text-xs py-2 border-b">
                     <div className="col-span-3 overflow-hidden text-ellipsis">{s.serviceName}</div>
                     <div>{s.request}</div>
                     <div>{s.doctor || '-'}</div>
-                    <div>{s.price.toFixed(2)}</div>
+                    <div>₹{s.price.toFixed(2)}</div>
                     <div>{s.room}</div>
-                    <div>{s.equipment}</div>
+                    <div>{s.duration} mins</div>
                     <div>{s.start}</div>
-                    <div>{s.durationLabel}</div>
                     <div>{s.end}</div>
+                    <div>{s.category || '-'}</div>
                   </div>
                 ))}
                 <div className="flex justify-end mt-3 text-sm">

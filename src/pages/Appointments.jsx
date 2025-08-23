@@ -4,6 +4,64 @@ import AppointmentHeader from '../components/Apponintments/appointment_header';
 import BookingSlots from '../components/Apponintments/booking_slots';
 import AppointmentDialog, { BlockoutDialog } from '../components/Apponintments/appointment_dialog';
 
+// Fetch doctors/providers from API
+async function fetchDoctors() {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/providers/', {
+      method: 'GET',
+      headers: {
+        'accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const doctors = await response.json();
+    return doctors.map(doctor => ({
+      id: doctor.id,
+      name: `${doctor.first_name} ${doctor.last_name}`,
+      specialization: doctor.specialization,
+      email: doctor.email,
+      phone: doctor.phone,
+      center_id: doctor.center_id
+    }));
+  } catch (error) {
+    console.error('Error fetching doctors:', error);
+    return [];
+  }
+}
+
+// Fetch services from API
+async function fetchServices() {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/services/', {
+      method: 'GET',
+      headers: {
+        'accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const services = await response.json();
+    return services.map(service => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      duration: service.duration,
+      price: service.price,
+      category: service.category
+    }));
+  } catch (error) {
+    console.error('Error fetching services:', error);
+    return [];
+  }
+}
+
 function Appointments() {
   const START_HOUR = 9;
   const END_HOUR = 20; // 8 PM
@@ -43,18 +101,89 @@ function Appointments() {
     'PIXEL'
   ];
 
-  const doctors = [
-    'Dr Meghana',
-    'Dr Sanjita',
-    'Dr Pragathi',
-    'Dr Led Team',
-    'Helios Team',
-    'Soprano Team',
-    'Soprano Ice Team',
-    'Nutritionist',
-    'Peels Team',
-    'Pixel Team'
-  ];
+  // State for doctors with loading and error handling
+  const [doctors, setDoctors] = useState([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [doctorsError, setDoctorsError] = useState(null);
+
+  // State for services with loading and error handling
+  const [services, setServices] = useState([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
+  const [servicesError, setServicesError] = useState(null);
+
+  // State for centers with loading and error handling
+  const [centers, setCenters] = useState([]);
+  const [centersLoading, setCentersLoading] = useState(true);
+  const [centersError, setCentersError] = useState(null);
+  const [selectedCenter, setSelectedCenter] = useState(null);
+
+  // Fetch doctors, services, and centers on component mount
+  useEffect(() => {
+    const loadData = async () => {
+      // Load doctors
+      setDoctorsLoading(true);
+      setDoctorsError(null);
+      try {
+        const fetchedDoctors = await fetchDoctors();
+        setDoctors(fetchedDoctors);
+      } catch (error) {
+        console.error('Failed to load doctors:', error);
+        setDoctorsError('Failed to load doctors');
+        setDoctors([]);
+      } finally {
+        setDoctorsLoading(false);
+      }
+
+      // Load services
+      setServicesLoading(true);
+      setServicesError(null);
+      try {
+        const fetchedServices = await fetchServices();
+        setServices(fetchedServices);
+      } catch (error) {
+        console.error('Failed to load services:', error);
+        setServicesError('Failed to load services');
+        setServices([]);
+      } finally {
+        setServicesLoading(false);
+      }
+
+      // Load centers
+      setCentersLoading(true);
+      setCentersError(null);
+      try {
+        const response = await fetch('http://127.0.0.1:8000/centers/', {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const fetchedCenters = await response.json();
+        setCenters(fetchedCenters);
+        
+        // Set default selected center
+        if (fetchedCenters.length > 0) {
+          setSelectedCenter(fetchedCenters[0]);
+        }
+      } catch (error) {
+        console.error('Failed to load centers:', error);
+        setCentersError('Failed to load centers');
+        setCenters([]);
+      } finally {
+        setCentersLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Get doctor names for the booking slots (compatibility with existing code)
+  const doctorNames = useMemo(() => doctors.map(d => d.name), [doctors]);
 
   const [activeTab, setActiveTab] = useState('rooms'); // 'rooms' | 'doctors'
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -273,6 +402,28 @@ function Appointments() {
       <div className="flex-1 flex flex-col">
         {/* Scheduler Content */}
         <div className="flex-1 p-4">
+            {(doctorsLoading || servicesLoading || centersLoading) ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <p className="text-gray-600">Loading data...</p>
+                </div>
+              </div>
+            ) : (doctorsError || servicesError || centersError) ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  {doctorsError && <p className="text-red-600 mb-2">{doctorsError}</p>}
+                  {servicesError && <p className="text-red-600 mb-2">{servicesError}</p>}
+                  {centersError && <p className="text-red-600 mb-2">{centersError}</p>}
+                  <button 
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    onClick={() => window.location.reload()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            ) : (
             <BookingSlots
               startHour={START_HOUR}
               endHour={END_HOUR}
@@ -321,6 +472,7 @@ function Appointments() {
               onEditAppointment={(appt) => setDialogState({ open: true, index: appt.startIndex, resource: appt.resource, mode: 'edit', appt })}
               onDeleteAppointment={(appt) => setAppointments((prev) => prev.filter((a) => a.id !== appt.id))}
             />
+            )}
           </div>
       <AppointmentDialog
         open={dialogState.open}
@@ -367,6 +519,8 @@ function Appointments() {
         resource={dialogState.resource}
         rooms={rooms}
         doctors={doctors}
+        services={services}
+        selectedCenter={selectedCenter}
         startHour={START_HOUR}
         endHour={END_HOUR}
         slotMinutes={SLOT_MINUTES}
