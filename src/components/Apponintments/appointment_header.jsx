@@ -72,6 +72,8 @@ export default function AppointmentHeader({
   
   // State for new guest modal
   const [newGuestModalOpen, setNewGuestModalOpen] = useState(false);
+  // State for payment dropdown
+  const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
 
   // Fetch centers on component mount
   useEffect(() => {
@@ -99,6 +101,20 @@ export default function AppointmentHeader({
 
     loadCenters();
   }, [selectedCenter, onTrainingCenterChange]);
+
+  // Close payment dropdown on outside click
+  useEffect(() => {
+    if (!paymentDropdownOpen) return;
+    
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('[data-payment-dropdown]')) {
+        setPaymentDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [paymentDropdownOpen]);
 
   // Handle center selection change
   const handleCenterChange = (centerName) => {
@@ -144,6 +160,8 @@ export default function AppointmentHeader({
             </div>
           </div>
 
+         
+
           {/* Date pill */}
           <div className="flex items-center gap-2">
             <button
@@ -168,7 +186,52 @@ export default function AppointmentHeader({
               </svg>
             </button>
           </div>
-
+           {/* Payment icon - centered */}
+          <div className="flex items-center relative" data-payment-dropdown>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-blue-800 hover:bg-blue-700"
+              title="Payment"
+              onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                <line x1="1" y1="10" x2="23" y2="10" />
+              </svg>
+            </button>
+            
+            {/* Payment dropdown */}
+            {paymentDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50 min-w-[160px]">
+                <button
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                  onClick={() => {
+                    window.location.href = '/pos';
+                    setPaymentDropdownOpen(false);
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                    <line x1="1" y1="10" x2="23" y2="10" />
+                  </svg>
+                  Point of Sale
+                </button>
+                <button
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                  onClick={() => {
+                    window.location.href = '/products-pos';
+                    setPaymentDropdownOpen(false);
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                    <line x1="7" y1="7" x2="7.01" y2="7" />
+                  </svg>
+                  Point of Products
+                </button>
+              </div>
+            )}
+          </div>
           {/* Right action icons and location */}
           <div className="flex items-center gap-4">
             <div className="relative">

@@ -187,53 +187,58 @@ export default function AppointmentDialog({
     try {
       setIsCreatingGuest(true);
       
-      // Create guest if we have guest information
+      // Ensure there is a guest in the backend (use safe defaults if fields are empty)
       let guestId = null;
-      if (first || last || email || mobile !== '+91') {
+      try {
+        const safeFirst = first || 'Guest';
+        const safeLast = last || 'User';
+        const safeEmail = email || `${Date.now()}@example.com`;
+        const safeMobile = (mobile && mobile !== '+91') ? mobile : '+91';
         const guestData = {
-          username: username || `${first.toLowerCase()}${last.toLowerCase()}${Date.now()}`,
-          first_name: first,
-          middle_name: middle,
-          last_name: last,
-          email: email,
-          phone_no: mobile,
-          home_no: homeNo,
-          gender: gender,
-          date_of_birth: dateOfBirth,
-          is_minor: isMinor,
-          nationality: nationality,
-          language: language
+          username: username || `${safeFirst.toLowerCase()}${safeLast.toLowerCase()}${Date.now()}`,
+          first_name: safeFirst,
+          middle_name: middle || '',
+          last_name: safeLast,
+          email: safeEmail,
+          phone_no: safeMobile,
+          home_no: homeNo || '+91',
+          gender: gender || 'Other',
+          date_of_birth: dateOfBirth || '',
+          is_minor: !!isMinor,
+          nationality: nationality || 'Indian',
+          language: language || 'English'
         };
-
-        try {
-          const guestResponse = await createGuest(guestData, selectedCenter);
-          guestId = guestResponse.id;
-          console.log('Guest created successfully:', guestResponse);
-        } catch (error) {
-          console.error('Failed to create guest:', error);
-          // Continue with appointment creation even if guest creation fails
-        }
+        const guestResponse = await createGuest(guestData, selectedCenter);
+        guestId = guestResponse?.id || null;
+        if (!guestId) throw new Error('No guest id returned');
+        console.log('Guest created successfully:', guestResponse);
+      } catch (error) {
+        console.error('Failed to ensure guest exists:', error);
       }
 
       const labelBase = (servicesAdded[0]?.serviceName)
         || (first || last ? `${first} ${last}`.trim() : (initial?.label || 'New Appointment'));
-
+      
       // Prepare and create backend appointment (create mode)
       let backendAppointmentId = null;
       try {
-        const selectedDoctorObj = doctors.find((d) => (d.name || d) === doctor);
-        const selectedServiceObj = services.find((s) => s.name === (selectedService || servicesAdded[0]?.serviceName));
+        // Choose doctor/service fallbacks if not explicitly set
+        const selectedDoctorObj = doctors.find((d) => (d.name || d) === doctor) || doctors[0] || null;
+        const chosenServiceName = selectedService || servicesAdded[0]?.serviceName || services[0]?.name;
+        const selectedServiceObj = services.find((s) => s.name === chosenServiceName) || null;
         const scheduledTimeISO = computeScheduledTimeIso(currentDate, startIdx);
+        const appointmentDate = formatYmd(currentDate);
 
-        if (selectedCenter?.id && selectedDoctorObj?.id && selectedServiceObj?.id) {
+        if (selectedCenter?.id && selectedDoctorObj?.id && selectedServiceObj?.id && guestId) {
           const backendPayload = {
             guest_id: guestId,
             center_id: selectedCenter.id,
             provider_id: selectedDoctorObj.id,
             service_id: selectedServiceObj.id,
             status: 'scheduled',
-            notes: notes,
-            scheduled_time: scheduledTimeISO
+            notes: notes || '',
+            scheduled_time: scheduledTimeISO,
+            appointment_date: appointmentDate
           };
           const created = await createBackendAppointment(backendPayload);
           console.log('Appointment created on backend:', created);

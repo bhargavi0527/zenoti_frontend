@@ -70,6 +70,10 @@ export default function BookingSlots({
   const popRef = useRef(null);
   const [popoverAlign, setPopoverAlign] = useState('center'); // 'left' | 'center' | 'right'
   const [popoverSide, setPopoverSide] = useState('above'); // 'above' | 'below'
+  // Appointment context menu (right-click on booked slot)
+  const [apptMenu, setApptMenu] = useState({ open: false, x: 0, y: 0, appt: null, w: 420 });
+  const [apptMoreOpen, setApptMoreOpen] = useState(false);
+  const [apptMoreBelowOpen, setApptMoreBelowOpen] = useState(false);
 
   // Close pinned popover on outside click or ESC
   useEffect(() => {
@@ -139,6 +143,36 @@ export default function BookingSlots({
     if (hours12 === 0) hours12 = 12;
     return `${hours12}:${String(minutes).padStart(2, '0')} ${suffix}`;
   };
+
+  const openApptMenuAt = (clientX, clientY, appt) => {
+    // Compute card size responsively
+    const cardWidth = Math.min(480, Math.max(360, window.innerWidth - 16));
+    const x = Math.max(8, Math.min(window.innerWidth - cardWidth - 8, clientX));
+    const y = Math.max(8, Math.min(window.innerHeight - 200, clientY));
+    setApptMenu({ open: true, x, y, appt, w: cardWidth });
+  };
+
+  // Keep card on-screen on resize
+  useEffect(() => {
+    if (!apptMenu.open) return undefined;
+    const onResize = () => {
+      const cardWidth = Math.min(480, Math.max(360, window.innerWidth - 16));
+      const x = Math.max(8, Math.min(window.innerWidth - cardWidth - 8, apptMenu.x));
+      const y = Math.max(8, Math.min(window.innerHeight - 200, apptMenu.y));
+      setApptMenu((m) => ({ ...m, x, y, w: cardWidth }));
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onResize, true);
+    return () => { window.removeEventListener('resize', onResize); window.removeEventListener('scroll', onResize, true); };
+  }, [apptMenu.open, apptMenu.x, apptMenu.y]);
+
+  // Close appointment menu on ESC
+  useEffect(() => {
+    if (!apptMenu.open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setApptMenu({ open: false, x: 0, y: 0, appt: null }); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [apptMenu.open]);
 
   const openMenuAt = (clientX, clientY, idx, resource) => {
     const menuWidth = 224; // ~w-56
@@ -249,6 +283,7 @@ export default function BookingSlots({
                 key={a.id}
                 draggable
                 onDragStart={(e) => onDragStart(e, a.id)}
+                onContextMenu={(e) => { e.preventDefault(); openApptMenuAt(e.clientX, e.clientY, a); }}
                 onClick={(e) => {
                   // Pin popover on click; do not open edit dialog here
                   e.stopPropagation();
@@ -267,15 +302,27 @@ export default function BookingSlots({
                   if (!pinnedInfoId) setInfoApptId((prev) => (prev === a.id ? null : prev));
                 }}
               >
-                {a.label}
+                <div className="font-semibold text-[11px] leading-tight mb-1">
+                  {fullName || 'Guest'}
+                </div>
+                <div className="text-[10px] leading-tight">
+                  {a.label}
+                </div>
 
                 {infoApptId === a.id && (
                   <div ref={popRef} className={`absolute ${popoverPositionClasses()} bg-white text-gray-900 rounded-md shadow-lg border border-gray-200 w-80 z-[130] pointer-events-auto`}>
-                    <div className="px-3 py-2 text-sm">
-                      <div className="font-medium mb-1">{fullName || a.label}{phone ? ` (${phone})` : ''}</div>
-                      <div className="text-xs text-gray-600">Time: {startLabel} - {endLabel}</div>
-                      {serviceName && <div className="text-xs text-gray-600">Service: {serviceName}</div>}
-                      <div className="text-xs text-gray-600 mt-1">Created By: {a.createdBy || 'Admin'}</div>
+                    <div className="px-3 py-2">
+                      <div className="text-[13px] font-semibold mb-2">New</div>
+                      <div className="text-sm mb-1">{fullName || a.label}{phone ? ` . ${phone}` : ''}</div>
+                      {serviceName && <div className="text-sm">{serviceName}</div>}
+                      <div className="text-sm">Choose your Doctor: {a.doctor || '—'}</div>
+                      <div className="text-sm mt-2">{startLabel} - {endLabel}</div>
+                      <div className="text-sm"># of Services for Appt: {Array.isArray(a.services) ? a.services.length : 1}</div>
+                      <div className="text-sm">Created By: {a.createdBy || 'Admin'}</div>
+                      <div className="text-sm mt-3">Previous Visits: 0</div>
+                      <div className="text-sm mt-3 text-gray-700">Enter product consumption details.</div>
+                      <div className="text-sm mt-4 text-gray-700">Enter required custom fields.</div>
+                      <div className="text-sm text-gray-700">Enter feedback.</div>
                     </div>
                     <div className="flex justify-end gap-2 px-3 pb-2">
                       <button className="text-xs text-blue-600 hover:underline" onClick={(e) => { e.stopPropagation(); onEditAppointment(a); }}>Edit</button>
@@ -478,6 +525,137 @@ export default function BookingSlots({
               ))}
             </div>
           )}
+        </>
+      )}
+
+      {/* Appointment right-click menu card */}
+      {apptMenu.open && apptMenu.appt && (
+        <>
+          <div className="fixed inset-0 z-[140]" onClick={() => setApptMenu({ open: false, x: 0, y: 0, appt: null })} />
+          <div
+            className="fixed z-[150] bg-white rounded-lg shadow-xl border border-gray-200 overflow-visible"
+            style={{ left: '50%', top: '10%', transform: 'translateX(-50%)', width: 'min(720px, 95vw)' }}
+          >
+            {(() => {
+              const a = apptMenu.appt;
+              const startLabel = indexToLabel(a.startIndex);
+              const endLabel = indexToLabel(Math.min(totalSlots, a.startIndex + a.durationSlots));
+              const fullName = `${a.guestFirstName || ''} ${a.guestLastName || ''}`.trim() || a.label;
+              const phone = a.guestPhone || '';
+              const firstService = Array.isArray(a.services) && a.services.length > 0 ? a.services[0] : null;
+              return (
+                <div>
+                  {/* Header */}
+                  <div className="bg-blue-900 text-white px-4 py-3 flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-sm">D</div>
+                    <div className="flex-1">
+                      <div className="font-semibold leading-5">{fullName}</div>
+                      {phone && <div className="text-xs text-white/90">{phone}</div>}
+                    </div>
+                  </div>
+                  {/* Body */}
+                  <div className="p-4 text-sm text-gray-900" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-gray-600">Service details</span>
+                      <select className="ml-auto text-xs border rounded px-2 py-1 bg-white">
+                        <option>New</option>
+                        <option>Check In</option>
+                        <option>Confirm</option>
+                        <option>Start</option>
+                        <option>Complete</option>
+                        <option>Cancel</option>
+                        <option>No Show</option>
+                      </select>
+                      <button className="p-1 hover:bg-gray-100 rounded" title="Edit" onClick={() => { onEditAppointment(a); setApptMenu({ open: false, x: 0, y: 0, appt: null }); }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 20h9" stroke="currentColor" fill="none" strokeWidth="2"/><path d="M16.5 3.5l4 4L7 21H3v-4z" stroke="currentColor" fill="none" strokeWidth="2"/></svg>
+                      </button>
+                      <div className="relative">
+                        <button className="p-1 hover:bg-gray-100 rounded" title="More" onClick={() => setApptMoreOpen((v) => !v)}>
+                          <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                        </button>
+                        {apptMoreOpen && (
+                          <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-md shadow-lg z-[10]">
+                            
+                            <div className="border-t my-1" />
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm text-red-600" onClick={() => { setApptMoreOpen(false); if (confirm('Delete this appointment?')) onDeleteAppointment(apptMenu.appt); }}>Delete</button>
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm" onClick={() => { setApptMoreOpen(false); /* Rebook appointment placeholder */ }}>Rebook appointment</button>
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm" onClick={() => { setApptMoreOpen(false); /* Rebook visit placeholder */ }}>Rebook visit</button>
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm" onClick={() => { setApptMoreOpen(false); /* Lock placeholder */ }}>Lock</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mb-2 font-medium">{firstService ? firstService.serviceName : a.label}</div>
+                    <div className="mb-1 text-gray-700">{startLabel} - {endLabel}{a.doctor ? `  |  ${a.doctor}` : ''}</div>
+                    <div className="mb-3 text-gray-500">{a.resource}</div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button className="px-3 py-2 bg-blue-600 text-white rounded" onClick={() => { setApptMenu({ open: false, x: 0, y: 0, appt: null }); }}>Take payment</button>
+                    </div>
+                  </div>
+                  {/* Footer quick actions */}
+                  <div className="px-3 py-2 border-t text-xs text-gray-700 flex items-center gap-4 relative">
+                    <button className="flex items-center gap-1 hover:text-blue-700" title="Group bill">
+                      <svg width="16" height="16" viewBox="0 0 24 24"><path d="M3 6h18v12H3z" stroke="currentColor" fill="none" strokeWidth="2"/></svg>
+                      <span>GROUP BILL</span>
+                    </button>
+                    <button className="flex items-center gap-1 hover:text-blue-700" title="Locate service">
+                      <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2l7 7-7 13-7-13z" stroke="currentColor" fill="none" strokeWidth="2"/></svg>
+                      <span>LOCATE SERVICE</span>
+                    </button>
+                    <button className="flex items-center gap-1 hover:text-blue-700" title="Feedback">
+                      <svg width="16" height="16" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V5a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" stroke="currentColor" fill="none" strokeWidth="2"/></svg>
+                      <span>FEEDBACK</span>
+                    </button>
+                    <button className="flex items-center gap-1 hover:text-blue-700" title="Print">
+                      <svg width="16" height="16" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 14H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6z" stroke="currentColor" fill="none" strokeWidth="2"/></svg>
+                      <span>PRINT</span>
+                    </button>
+                    <div className="relative">
+                      <button className="flex items-center gap-1 hover:text-blue-700" title="More" onClick={() => setApptMoreBelowOpen((v)=>!v)}>
+                        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                        <span>MORE</span>
+                      </button>
+                      {apptMoreBelowOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-[200]">
+                          <button
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
+                            onClick={() => {
+                              setApptMoreBelowOpen(false);
+                              const a = apptMenu.appt;
+                              alert(`Enter prescription data for ${(a?.guestFirstName || '') + ' ' + (a?.guestLastName || '')}`.trim());
+                            }}
+                          >
+                            Enter prescription data
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
+                            onClick={() => {
+                              setApptMoreBelowOpen(false);
+                              const a = apptMenu.appt;
+                              const serviceName = (a?.services && a.services[0]?.serviceName) || a?.label || '';
+                              alert(`Enter Service Custom Data for: ${serviceName}`);
+                            }}
+                          >
+                            Enter Service Custom Data
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
+                            onClick={() => {
+                              setApptMoreBelowOpen(false);
+                              const a = apptMenu.appt;
+                              alert(`Show Appointment log for ID: ${a?.id}`);
+                            }}
+                          >
+                            Show Appointment log
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         </>
       )}
 

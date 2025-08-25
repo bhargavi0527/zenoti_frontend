@@ -248,69 +248,69 @@ function Appointments() {
       } catch {}
     }
     return [
-    {
-      id: 'a1',
-      resource: 'Consultation Room 1',
-      startIndex: 5, // 9:00 + 5*15 = 10:15
-      durationSlots: 4,
-      label: 'Doctor Unassigned',
-      color: 'bg-teal-200 text-teal-900',
-      createdBy: 'Admin'
-    },
-    {
-      id: 'a2',
-      resource: 'Consultation Room 1',
-      startIndex: 20, // ~2 PM
-      durationSlots: 2,
-      label: 'New',
-      color: 'bg-amber-200 text-amber-900',
-      createdBy: 'Admin'
-    },
-    {
-      id: 'a3',
-      resource: 'Treatment Room',
-      startIndex: 4,
-      durationSlots: 36, // long block "No Doctor"
-      label: 'No Doctor',
-      color: 'bg-blue-800 text-white',
-      createdBy: 'Admin'
-    },
-    {
-      id: 'a4',
-      resource: 'Physiotherapy Room',
-      startIndex: 12,
-      durationSlots: 6,
-      label: 'Komal Sahu (+91 94 14 010571)',
-      color: 'bg-green-200 text-green-900',
-      createdBy: 'Admin'
-    },
-    {
-      id: 'a5',
-      resource: 'Counseling Room',
-      startIndex: 20,
-      durationSlots: 16,
-      label: 'VarshaG. (+91 8464 840 423)',
-      color: 'bg-green-200 text-green-900',
-      createdBy: 'Admin'
-    },
-    {
-      id: 'a6',
-      resource: 'Counseling Room',
-      startIndex: 14,
-      durationSlots: 8,
-      label: 'Rashmi. (+91 8595 116 529)',
-      color: 'bg-green-200 text-green-900',
-      createdBy: 'Admin'
-    },
-    {
-      id: 'a7',
-      resource: 'General Consultation Room',
-      startIndex: 8,
-      durationSlots: 4,
-      label: 'Vinita K',
-      color: 'bg-green-200 text-green-900',
-      createdBy: 'Admin'
-    }
+    // {
+    //   id: 'a1',
+    //   resource: 'Consultation Room 1',
+    //   startIndex: 5, // 9:00 + 5*15 = 10:15
+    //   durationSlots: 4,
+    //   label: 'Doctor Unassigned',
+    //   color: 'bg-teal-200 text-teal-900',
+    //   createdBy: 'Admin'
+    // },
+    // {
+    //   id: 'a2',
+    //   resource: 'Consultation Room 1',
+    //   startIndex: 20, // ~2 PM
+    //   durationSlots: 2,
+    //   label: 'New',
+    //   color: 'bg-amber-200 text-amber-900',
+    //   createdBy: 'Admin'
+    // },
+    // {
+    //   id: 'a3',
+    //   resource: 'Treatment Room',
+    //   startIndex: 4,
+    //   durationSlots: 36, // long block "No Doctor"
+    //   label: 'No Doctor',
+    //   color: 'bg-blue-800 text-white',
+    //   createdBy: 'Admin'
+    // },
+    // {
+    //   id: 'a4',
+    //   resource: 'Physiotherapy Room',
+    //   startIndex: 12,
+    //   durationSlots: 6,
+    //   label: 'Komal Sahu (+91 94 14 010571)',
+    //   color: 'bg-green-200 text-green-900',
+    //   createdBy: 'Admin'
+    // },
+    // {
+    //   id: 'a5',
+    //   resource: 'Counseling Room',
+    //   startIndex: 20,
+    //   durationSlots: 16,
+    //   label: 'VarshaG. (+91 8464 840 423)',
+    //   color: 'bg-green-200 text-green-900',
+    //   createdBy: 'Admin'
+    // },
+    // {
+    //   id: 'a6',
+    //   resource: 'Counseling Room',
+    //   startIndex: 14,
+    //   durationSlots: 8,
+    //   label: 'Rashmi. (+91 8595 116 529)',
+    //   color: 'bg-green-200 text-green-900',
+    //   createdBy: 'Admin'
+    // },
+    // {
+    //   id: 'a7',
+    //   resource: 'General Consultation Room',
+    //   startIndex: 8,
+    //   durationSlots: 4,
+    //   label: 'Vinita K',
+    //   color: 'bg-green-200 text-green-900',
+    //   createdBy: 'Admin'
+    // }
   ];
   });
 
@@ -392,6 +392,91 @@ function Appointments() {
   const onDragOver = (e) => {
     e.preventDefault();
   };
+
+  // Helper: format date to YYYY-MM-DD
+  const formatYmd = (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  // Helper: compute startIndex from ISO time
+  const getStartIndexFromIso = (iso) => {
+    try {
+      const dt = new Date(iso);
+      const minutes = dt.getHours() * 60 + dt.getMinutes();
+      const startMinutes = START_HOUR * 60;
+      const diff = Math.max(0, minutes - startMinutes);
+      return Math.floor(diff / SLOT_MINUTES);
+    } catch {
+      return 0;
+    }
+  };
+
+  // Fetch backend appointments for currentDate and map onto grid by time
+  useEffect(() => {
+    const loadAppointments = async () => {
+      try {
+        // Start from locally saved appointments for the selected day
+        const savedRaw = localStorage.getItem(storageKeyForDate(currentDate));
+        let localForDay = [];
+        if (savedRaw) {
+          try {
+            const parsed = JSON.parse(savedRaw);
+            if (Array.isArray(parsed)) localForDay = parsed;
+          } catch {}
+        }
+
+        const res = await fetch('http://127.0.0.1:8000/appointments/', {
+          method: 'GET',
+          headers: { 'accept': 'application/json' }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const all = await res.json();
+        const dayStr = formatYmd(currentDate);
+        const filtered = Array.isArray(all) ? all.filter(a => a.appointment_date === dayStr) : [];
+        const backendAppts = filtered.map(a => {
+          const provider = doctors.find(d => d.id === a.provider_id);
+          const service = services.find(s => s.id === a.service_id);
+          return {
+            id: a.id,
+            resource: activeTab === 'doctors' ? (provider?.name || 'Unknown Doctor') : (provider?.name || 'Unknown'),
+            startIndex: getStartIndexFromIso(a.scheduled_time),
+            durationSlots: 4,
+            label: service?.name || 'Appointment',
+            color: 'bg-green-200 text-green-900',
+            doctor: provider?.name || '',
+            services: service ? [{ serviceName: service.name, serviceId: service.id }] : [],
+            createdBy: 'System',
+            backendAppointmentId: a.id
+          };
+        });
+
+        // Merge: backend wins by same id; keep local-only (e.g., "new-..." items)
+        const byId = new Map();
+        localForDay.forEach(item => byId.set(item.id, item));
+        backendAppts.forEach(item => byId.set(item.id, item));
+        const merged = Array.from(byId.values());
+        setAppointments(merged);
+      } catch (err) {
+        console.error('Failed to load appointments:', err);
+        // On failure, fall back to locally saved data (if any)
+        const savedRaw = localStorage.getItem(storageKeyForDate(currentDate));
+        if (savedRaw) {
+          try {
+            const parsed = JSON.parse(savedRaw);
+            if (Array.isArray(parsed)) setAppointments(parsed);
+          } catch {}
+        }
+      }
+    };
+
+    // Only run after doctors and services have loaded
+    if (doctors.length > 0 || services.length > 0) {
+      loadAppointments();
+    }
+  }, [currentDate, doctors, services]);
 
   const renderRow = (resource) => {
     return (
