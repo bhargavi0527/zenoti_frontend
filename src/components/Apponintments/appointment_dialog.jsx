@@ -56,6 +56,54 @@ async function createGuest(guestData, selectedCenter) {
   }
 }
 
+// Appointment creation API function
+async function createBackendAppointment(appointmentPayload) {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/appointments/', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(appointmentPayload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Error creating appointment:', error);
+    throw error;
+  }
+}
+
+// Appointment update API function (PATCH)
+async function patchBackendAppointment(appointmentId, partialPayload) {
+  try {
+    const response = await fetch(`http://127.0.0.1:8000/appointments/${appointmentId}`, {
+      method: 'PATCH',
+      headers: {
+        'accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(partialPayload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Error patching appointment:', error);
+    throw error;
+  }
+}
+
 export default function AppointmentDialog({
   open,
   onClose,
@@ -66,6 +114,7 @@ export default function AppointmentDialog({
   doctors = [],
   services = [],
   selectedCenter = null,
+  currentDate = new Date(),
   startHour = 9,
   endHour = 20,
   slotMinutes = 15,
@@ -114,6 +163,26 @@ export default function AppointmentDialog({
 
   const endIdx = Math.min(totalSlots, startIdx + durationSlots);
 
+  const computeScheduledTimeIso = (dateObj, startIndexLocal) => {
+    try {
+      const startMinutes = startHour * 60 + startIndexLocal * slotMinutes;
+      const hours24 = Math.floor(startMinutes / 60);
+      const minutes = startMinutes % 60;
+      const dt = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), hours24, minutes, 0);
+      return dt.toISOString();
+    } catch (err) {
+      console.error('Failed to compute scheduled_time:', err);
+      return new Date().toISOString();
+    }
+  };
+
+  const formatYmd = (dateObj) => {
+    const yyyy = dateObj.getFullYear();
+    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const doSave = async () => {
     try {
       setIsCreatingGuest(true);
@@ -148,7 +217,54 @@ export default function AppointmentDialog({
 
       const labelBase = (servicesAdded[0]?.serviceName)
         || (first || last ? `${first} ${last}`.trim() : (initial?.label || 'New Appointment'));
+
+      // Prepare and create backend appointment (create mode)
+      let backendAppointmentId = null;
+      try {
+        const selectedDoctorObj = doctors.find((d) => (d.name || d) === doctor);
+        const selectedServiceObj = services.find((s) => s.name === (selectedService || servicesAdded[0]?.serviceName));
+        const scheduledTimeISO = computeScheduledTimeIso(currentDate, startIdx);
+
+        if (selectedCenter?.id && selectedDoctorObj?.id && selectedServiceObj?.id) {
+          const backendPayload = {
+            guest_id: guestId,
+            center_id: selectedCenter.id,
+            provider_id: selectedDoctorObj.id,
+            service_id: selectedServiceObj.id,
+            status: 'scheduled',
+            notes: notes,
+            scheduled_time: scheduledTimeISO
+          };
+          const created = await createBackendAppointment(backendPayload);
+          console.log('Appointment created on backend:', created);
+          backendAppointmentId = created?.id || null;
+        } else {
+          console.warn('Skipping backend appointment creation due to missing ids', {
+            hasGuestId: !!guestId,
+            centerId: selectedCenter?.id,
+            doctorId: selectedDoctorObj?.id,
+            serviceId: selectedServiceObj?.id
+          });
+        }
+      } catch (err) {
+        console.error('Failed to create backend appointment:', err);
+        // continue saving locally
+      }
       
+      // If editing an existing appointment, patch its time on backend
+      if (mode === 'edit' && (initial?.backendAppointmentId || backendAppointmentId)) {
+        try {
+          const scheduledTimeISO = computeScheduledTimeIso(currentDate, startIdx);
+          const appointmentDate = formatYmd(currentDate);
+          const idToPatch = initial?.backendAppointmentId || backendAppointmentId;
+          const patched = await patchBackendAppointment(idToPatch, { scheduled_time: scheduledTimeISO, appointment_date: appointmentDate });
+          console.log('Patched backend appointment:', patched);
+          backendAppointmentId = idToPatch;
+        } catch (err) {
+          console.error('Failed to patch backend appointment:', err);
+        }
+      }
+
       onSave({
         id: initial?.id,
         doctor,
@@ -173,7 +289,8 @@ export default function AppointmentDialog({
         nationality,
         language,
         homeNo,
-        username
+        username,
+        backendAppointmentId: initial?.backendAppointmentId || backendAppointmentId
       });
     } catch (error) {
       console.error('Error saving appointment:', error);

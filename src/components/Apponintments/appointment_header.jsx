@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import NewGuestModal from './new_guest_modal';
 
 // Fetch centers from API
 async function fetchCenters() {
@@ -59,13 +60,18 @@ export default function AppointmentHeader({
   selectedTrainingCenter = '',
   onTrainingCenterChange = () => {},
   orientation = 'horizontal',
-  onOrientationChange = () => {}
+  onOrientationChange = () => {},
+  selectedCenterProp = null,
+  onGuestCreated = () => {}
 }) {
   // State for centers with loading and error handling
   const [centers, setCenters] = useState([]);
   const [centersLoading, setCentersLoading] = useState(true);
   const [centersError, setCentersError] = useState(null);
   const [selectedCenter, setSelectedCenter] = useState(selectedTrainingCenter);
+  
+  // State for new guest modal
+  const [newGuestModalOpen, setNewGuestModalOpen] = useState(false);
 
   // Fetch centers on component mount
   useEffect(() => {
@@ -122,7 +128,11 @@ export default function AppointmentHeader({
                 className="w-full rounded-md bg-white/95 text-blue-950 placeholder:text-blue-900/60 pl-9 pr-10 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
                 placeholder="Name, Phone, Email, Code"
               />
-              <span className="absolute inset-y-0 right-2 flex items-center text-blue-900/60">
+              <button
+                className="absolute inset-y-0 right-2 flex items-center text-blue-900/60 hover:text-blue-700"
+                onClick={() => setNewGuestModalOpen(true)}
+                title="Add New Guest"
+              >
                 {/* contact/add icon */}
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
@@ -130,7 +140,7 @@ export default function AppointmentHeader({
                   <line x1="19" y1="8" x2="19" y2="14" />
                   <line x1="16" y1="11" x2="22" y2="11" />
                 </svg>
-              </span>
+              </button>
             </div>
           </div>
 
@@ -269,6 +279,17 @@ export default function AppointmentHeader({
           </div>
         </div>
       </div>
+      
+      {/* New Guest Modal */}
+      <NewGuestModal
+        open={newGuestModalOpen}
+        onClose={() => setNewGuestModalOpen(false)}
+        onGuestCreated={(guest) => {
+          onGuestCreated(guest);
+          setNewGuestModalOpen(false);
+        }}
+        selectedCenter={selectedCenterProp}
+      />
     </div>
   );
 }

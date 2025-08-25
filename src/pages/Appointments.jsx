@@ -62,6 +62,40 @@ async function fetchServices() {
   }
 }
 
+// Fetch rooms from API
+async function fetchRooms() {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/rooms/', {
+      method: 'GET',
+      headers: {
+        'accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const rooms = await response.json();
+    return rooms.map(room => ({
+      id: room.id,
+      code: room.code,
+      name: room.name,
+      description: room.description,
+      capacity: room.capacity,
+      only_one_appointment: room.only_one_appointment,
+      can_exceed_capacity: room.can_exceed_capacity,
+      center_id: room.center_id,
+      is_active: room.is_active,
+      room_category_id: room.room_category_id,
+      dq_check_remark: room.dq_check_remark
+    }));
+  } catch (error) {
+    console.error('Error fetching rooms:', error);
+    return [];
+  }
+}
+
 function Appointments() {
   const START_HOUR = 9;
   const END_HOUR = 20; // 8 PM
@@ -88,18 +122,10 @@ function Appointments() {
     return labels;
   }, []);
 
-  const rooms = [
-    'Con1 Dr Meghana Komsani & Dr Anush',
-    'Con2 Dr Sanjita Tripathy',
-    'Cons 3 - Dr Pragathi Chadalavada',
-    'Dr Led, Peel',
-    'Helios - LT Qswitch',
-    'LHR - Soprano',
-    'LHR - Soprano Ice',
-    'Nutritionist',
-    'Peels, OFR, OSF',
-    'PIXEL'
-  ];
+  // State for rooms with loading and error handling
+  const [rooms, setRooms] = useState([]);
+  const [roomsLoading, setRoomsLoading] = useState(true);
+  const [roomsError, setRoomsError] = useState(null);
 
   // State for doctors with loading and error handling
   const [doctors, setDoctors] = useState([]);
@@ -117,7 +143,7 @@ function Appointments() {
   const [centersError, setCentersError] = useState(null);
   const [selectedCenter, setSelectedCenter] = useState(null);
 
-  // Fetch doctors, services, and centers on component mount
+  // Fetch doctors, services, centers, and rooms on component mount
   useEffect(() => {
     const loadData = async () => {
       // Load doctors
@@ -146,6 +172,20 @@ function Appointments() {
         setServices([]);
       } finally {
         setServicesLoading(false);
+      }
+
+      // Load rooms
+      setRoomsLoading(true);
+      setRoomsError(null);
+      try {
+        const fetchedRooms = await fetchRooms();
+        setRooms(fetchedRooms);
+      } catch (error) {
+        console.error('Failed to load rooms:', error);
+        setRoomsError('Failed to load rooms');
+        setRooms([]);
+      } finally {
+        setRoomsLoading(false);
       }
 
       // Load centers
@@ -210,7 +250,7 @@ function Appointments() {
     return [
     {
       id: 'a1',
-      resource: rooms[0],
+      resource: 'Consultation Room 1',
       startIndex: 5, // 9:00 + 5*15 = 10:15
       durationSlots: 4,
       label: 'Doctor Unassigned',
@@ -219,7 +259,7 @@ function Appointments() {
     },
     {
       id: 'a2',
-      resource: rooms[0],
+      resource: 'Consultation Room 1',
       startIndex: 20, // ~2 PM
       durationSlots: 2,
       label: 'New',
@@ -228,7 +268,7 @@ function Appointments() {
     },
     {
       id: 'a3',
-      resource: rooms[2],
+      resource: 'Treatment Room',
       startIndex: 4,
       durationSlots: 36, // long block "No Doctor"
       label: 'No Doctor',
@@ -237,7 +277,7 @@ function Appointments() {
     },
     {
       id: 'a4',
-      resource: rooms[4],
+      resource: 'Physiotherapy Room',
       startIndex: 12,
       durationSlots: 6,
       label: 'Komal Sahu (+91 94 14 010571)',
@@ -246,7 +286,7 @@ function Appointments() {
     },
     {
       id: 'a5',
-      resource: rooms[5],
+      resource: 'Counseling Room',
       startIndex: 20,
       durationSlots: 16,
       label: 'VarshaG. (+91 8464 840 423)',
@@ -255,7 +295,7 @@ function Appointments() {
     },
     {
       id: 'a6',
-      resource: rooms[5],
+      resource: 'Counseling Room',
       startIndex: 14,
       durationSlots: 8,
       label: 'Rashmi. (+91 8595 116 529)',
@@ -264,7 +304,7 @@ function Appointments() {
     },
     {
       id: 'a7',
-      resource: rooms[8],
+      resource: 'General Consultation Room',
       startIndex: 8,
       durationSlots: 4,
       label: 'Vinita K',
@@ -274,7 +314,7 @@ function Appointments() {
   ];
   });
 
-  const resources = activeTab === 'rooms' ? rooms : doctors;
+  const resources = activeTab === 'rooms' ? rooms.map(room => room.name) : doctors.map(d => d.name);
 
   // Save when date or appointments change
   useEffect(() => {
@@ -318,7 +358,31 @@ function Appointments() {
       return;
     }
     if (appt.resource === resource && appt.startIndex === nextStart) return;
+    // Update local state immediately
     setAppointments((prev) => prev.map((a) => a.id === appointmentId ? { ...a, resource, startIndex: nextStart } : a));
+
+    // If appointment has backend id, patch its scheduled_time
+    const minutesFromStart = START_HOUR * 60 + nextStart * SLOT_MINUTES;
+    const hours24 = Math.floor(minutesFromStart / 60);
+    const minutes = minutesFromStart % 60;
+    const scheduledDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), hours24, minutes, 0);
+    const scheduledISO = scheduledDate.toISOString();
+    if (appt.backendAppointmentId) {
+      fetch(`http://127.0.0.1:8000/appointments/${appt.backendAppointmentId}`, {
+        method: 'PATCH',
+        headers: {
+          'accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ scheduled_time: scheduledISO })
+      }).then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        console.log('Patched appointment scheduled_time:', data);
+      }).catch((err) => {
+        console.error('Failed to patch appointment time:', err);
+      });
+    }
   };
 
   const onDragStart = (e, id) => {
@@ -391,6 +455,12 @@ function Appointments() {
         onTrainingCenterChange={setTrainingCenter}
         orientation={orientation}
         onOrientationChange={setOrientation}
+        selectedCenter={selectedCenter}
+        onGuestCreated={(guest) => {
+          console.log('New guest created:', guest);
+          // You can add additional logic here, such as refreshing the guest list
+          // or showing a success notification
+        }}
       />
 
       {/* Body with spacing under fixed header */}
@@ -402,19 +472,20 @@ function Appointments() {
       <div className="flex-1 flex flex-col">
         {/* Scheduler Content */}
         <div className="flex-1 p-4">
-            {(doctorsLoading || servicesLoading || centersLoading) ? (
+            {(doctorsLoading || servicesLoading || centersLoading || roomsLoading) ? (
               <div className="flex items-center justify-center h-64">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
                   <p className="text-gray-600">Loading data...</p>
                 </div>
               </div>
-            ) : (doctorsError || servicesError || centersError) ? (
+            ) : (doctorsError || servicesError || centersError || roomsError) ? (
               <div className="flex items-center justify-center h-64">
                 <div className="text-center">
                   {doctorsError && <p className="text-red-600 mb-2">{doctorsError}</p>}
                   {servicesError && <p className="text-red-600 mb-2">{servicesError}</p>}
                   {centersError && <p className="text-red-600 mb-2">{centersError}</p>}
+                  {roomsError && <p className="text-red-600 mb-2">{roomsError}</p>}
                   <button 
                     className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                     onClick={() => window.location.reload()}
@@ -509,7 +580,8 @@ function Appointments() {
                 guestGender: payload.guestGender,
                 referral: payload.referral,
                 isMinor: payload.isMinor,
-                createdBy: 'Admin'
+                createdBy: 'Admin',
+                backendAppointmentId: payload.backendAppointmentId || null
               }
             ]);
           }
@@ -517,10 +589,11 @@ function Appointments() {
         }}
         startIndex={dialogState.index}
         resource={dialogState.resource}
-        rooms={rooms}
+        rooms={rooms.map(room => room.name)}
         doctors={doctors}
         services={services}
         selectedCenter={selectedCenter}
+        currentDate={currentDate}
         startHour={START_HOUR}
         endHour={END_HOUR}
         slotMinutes={SLOT_MINUTES}

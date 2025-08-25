@@ -46,7 +46,7 @@ export default function BookingSlots({
     return labels;
   }, [startHour, endHour, slotMinutes]);
 
-  const resources = activeTab === 'rooms' ? rooms : doctors.map(d => d.name || d);
+  const resources = activeTab === 'rooms' ? rooms.map(room => room.name) : doctors.map(d => d.name || d);
   const getResourceAppointments = (resource) => appointments.filter((a) => a.resource === resource);
 
   const onDragOver = (e) => e.preventDefault();
@@ -159,10 +159,25 @@ export default function BookingSlots({
     return () => window.removeEventListener('keydown', onKey);
   }, [menu.open]);
 
-  const renderRow = (resource) => (
+  const renderRow = (resource) => {
+    // Find room details if this is a room resource
+    const roomDetails = activeTab === 'rooms' ? rooms.find(room => room.name === resource) : null;
+    
+    return (
     <div key={resource} className="flex border-b border-gray-200">
       <div className="w-56 px-3 py-3 text-sm text-gray-800 bg-white sticky left-0 z-10 border-r border-gray-200">
-        {resource}
+        <div className="font-medium">{resource}</div>
+        {roomDetails && (
+          <div className="text-xs text-gray-500 mt-1">
+            <div>Code: {roomDetails.code}</div>
+            <div>Capacity: {roomDetails.capacity}</div>
+            {roomDetails.description && (
+              <div className="truncate" title={roomDetails.description}>
+                {roomDetails.description}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div
         className="relative flex-1 bg-white"
@@ -276,6 +291,7 @@ export default function BookingSlots({
       </div>
     </div>
   );
+  };
 
   return (
     <div className="bg-white rounded-lg shadow border border-gray-200">
