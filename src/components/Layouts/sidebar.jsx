@@ -6,11 +6,14 @@ function Sidebar() {
   const location = useLocation();
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [masterOpen, setMasterOpen] = useState(() => location.pathname.startsWith('/master'));
   
   // Determine active item based on current route
   const getActiveItem = () => {
     if (location.pathname === '/admin') return 'admin';
     if (location.pathname === '/appointments') return 'appointments';
+    if (location.pathname === '/master') return 'master';
+    if (location.pathname.startsWith('/master/')) return 'master';
     return 'admin'; // default
   };
 
@@ -37,6 +40,7 @@ function Sidebar() {
   const handleItemClick = (item) => {
     setActiveItem(item.id);
     setShowSearch(false); // Hide search when navigating
+    if (item.id !== 'master') setMasterOpen(false);
     navigate(item.path);
   };
 
@@ -86,6 +90,52 @@ function Sidebar() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4.586A1 1 0 0116 2.586L19.414 6A1 1 0 0119 7H15a2 2 0 01-2-2z" />
         </svg>
       </button>
+
+      {/* Master Icon */}
+      <button
+        onClick={() => setMasterOpen((v) => !v)}
+        className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 ${
+          activeItem === 'master'
+            ? 'bg-blue-700 text-white'
+            : 'text-white hover:bg-blue-800'
+        }`}
+        title="Master"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+        </svg>
+      </button>
+
+      {/* Master submenu full-height panel */}
+      {masterOpen && (
+        <div className="fixed left-16 top-0 bottom-0 w-64 bg-blue-800 text-white shadow-xl z-40">
+          <div className="px-5 py-5 text-lg font-semibold">Master data</div>
+          <nav className="px-3 space-y-2">
+            <button
+              onClick={() => handleItemClick({ id: 'master-services', path: '/master/services' })}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded ${
+                location.pathname === '/master/services' ? 'bg-blue-700' : 'hover:bg-blue-700/80'
+              }`}
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L8 21l4-1.75L16 21l-1.75-4L19 12l-4-.25L12 8l-3 3.75L5 12l4.75 5z" />
+              </svg>
+              <span className="text-sm">Services</span>
+            </button>
+            <button
+              onClick={() => handleItemClick({ id: 'master-products', path: '/master/products' })}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded ${
+                location.pathname === '/master/products' ? 'bg-blue-700' : 'hover:bg-blue-700/80'
+              }`}
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" />
+              </svg>
+              <span className="text-sm">Products</span>
+            </button>
+          </nav>
+        </div>
+      )}
 
       {/* Search Bar Overlay */}
       {showSearch && (
