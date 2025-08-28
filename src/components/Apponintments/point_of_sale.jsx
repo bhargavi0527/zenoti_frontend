@@ -64,70 +64,86 @@ export default function PointOfSale() {
   const [loyaltyProgram, setLoyaltyProgram] = useState('');
   const [loyaltyAmount, setLoyaltyAmount] = useState('0.00');
   const [loyaltyPoints, setLoyaltyPoints] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('');
+  const centerName = 'Corporate Training Center';
 
   return (
     <>
-    <div className="min-h-screen bg-white">
-      <div className="max-w-[1200px] mx-auto p-4">
-        <div className="mb-3 text-sm text-gray-800">
-          <span className="font-medium">Center Name</span> Corporate Training Center
-        </div>
+     {/* Full-width page header */}
+     <div className="w-full border-b bg-gray-50 mb-3">
+       <div className="px-4 py-2">
+       
+         <div className="flex items-center gap-6 mb-2">
+           <label className="text-sm text-gray-700 flex items-center gap-2">
+             <input type="checkbox" className="h-3 w-3 accent-blue-200" />
+             across centers
+           </label>
+           <label className="text-sm text-gray-700 flex items-center gap-2">
+             <input type="checkbox" className="h-3 w-3 accent-blue-600" />
+             Guest is a minor
+           </label>
+         </div>
+         <div className="grid grid-cols-12 gap-2 items-center">
+           <div className="col-span-2">
+             <div className="text-xs text-gray-600 mb-1">Code</div>
+             <input className="w-full border rounded px-2 py-1 text-sm" />
+           </div>
+           <div className="col-span-3">
+             <div className="text-xs text-gray-600 mb-1">Mobile</div>
+             <div className="flex gap-2">
+               <input className="w-14 border rounded px-2 py-1 text-sm" defaultValue="+91" />
+               <input className="flex-1 border rounded px-2 py-1 text-sm" />
+             </div>
+           </div>
+           <div className="col-span-3">
+             <div className="text-xs text-gray-600 mb-1">First *</div>
+             <input className="w-full border rounded px-2 py-1 text-sm" />
+           </div>
+           <div className="col-span-4">
+             <div className="text-xs text-gray-600 mb-1">Last *</div>
+             <input className="w-full border rounded px-2 py-1 text-sm" />
+           </div>
+         </div>
+         <div className="grid grid-cols-12 gap-2 items-center mt-2">
+           <div className="col-span-4">
+             <div className="text-xs text-gray-600 mb-1">Gender *</div>
+             <select value={gender} onChange={(e)=>setGender(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
+               <option value="">Select Gender</option>
+               <option>Female</option>
+               <option>Male</option>
+               <option>Other</option>
+             </select>
+           </div>
+           <div className="col-span-4">
+             <div className="text-xs text-gray-600 mb-1">Email *</div>
+             <input className="w-full border rounded px-2 py-1 text-sm" />
+           </div>
+           <div className="col-span-4">
+             <div className="text-xs text-gray-600 mb-1">Referral</div>
+             <select value={source} onChange={(e)=>setSource(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
+               <option value="">Select Source</option>
+               <option>Facebook</option>
+               <option>Instagram</option>
+               <option>Walk-in</option>
+             </select>
+           </div>
+         </div>
+       </div>
+     </div>
 
-        <div className="grid grid-cols-12 gap-6">
-          {/* Left: Guest & items */}
-          <div className="col-span-7 border rounded-md p-4">
-            <div className="grid grid-cols-12 gap-3 items-center">
-              <label className="col-span-2 text-sm text-gray-700 flex items-center gap-2">
-                <input type="checkbox" className="accent-blue-600" />
-                across centers
-              </label>
-              <div className="col-span-2">
-                <div className="text-xs text-gray-600 mb-1">Code</div>
-                <input className="w-full border rounded px-2 py-1 text-sm" />
-              </div>
-              <div className="col-span-2">
-                <div className="text-xs text-gray-600 mb-1">Mobile</div>
-                <div className="flex gap-2">
-                  <input className="w-14 border rounded px-2 py-1 text-sm" defaultValue="+91" />
-                  <input className="flex-1 border rounded px-2 py-1 text-sm" />
-                </div>
-              </div>
-              <div className="col-span-3">
-                <div className="text-xs text-gray-600 mb-1">First *</div>
-                <input className="w-full border rounded px-2 py-1 text-sm" />
-              </div>
-              <div className="col-span-3">
-                <div className="text-xs text-gray-600 mb-1">Last *</div>
-                <input className="w-full border rounded px-2 py-1 text-sm" />
-              </div>
-              <label className="col-span-2 text-sm text-gray-700 flex items-center gap-2">
-                <input type="checkbox" className="accent-blue-600" />
-                Guest is a minor
-              </label>
-              <div className="col-span-3">
-                <div className="text-xs text-gray-600 mb-1">Gender *</div>
-                <select value={gender} onChange={(e)=>setGender(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
-                  <option value="">Select Gender</option>
-                  <option>Female</option>
-                  <option>Male</option>
-                  <option>Other</option>
-                </select>
-              </div>
-              <div className="col-span-3">
-                <div className="text-xs text-gray-600 mb-1">Email *</div>
-                <input className="w-full border rounded px-2 py-1 text-sm" />
-              </div>
-              <div className="col-span-3">
-                <div className="text-xs text-gray-600 mb-1">Referral</div>
-                <select value={source} onChange={(e)=>setSource(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
-                  <option value="">Select Source</option>
-                  <option>Facebook</option>
-                  <option>Instagram</option>
-                  <option>Walk-in</option>
-                </select>
+     <div className="grid grid-cols-12 gap-4">
+          {/* Left: Guest & items (header now contains the guest form) */}
+          <div className="col-span-6 border rounded-md p-3">
+            <div className="mb-4">
+              <div className="mb-2 text-sm text-gray-800"><span className="font-medium">Center Name</span> {centerName}</div>
+              <div className="flex items-center gap-3 text-sm text-gray-800">
+                <div className="font-medium">Invoice No</div>
+                
               </div>
             </div>
-
+            <div className="grid grid-cols-12 gap-3 items-center">
+              
+            </div>
             <div className="mt-6 space-y-4">
               <div>
                 <div className="text-sm text-gray-700 mb-1">Packages</div>
@@ -233,7 +249,7 @@ export default function PointOfSale() {
                     </div>
                     <div className="col-span-6 flex items-end">
                       <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                        <input type="checkbox" checked={prepaidOneTime} onChange={(e)=>setPrepaidOneTime(e.target.checked)} className="accent-blue-600" />
+                        <input type="checkbox" checked={prepaidOneTime} onChange={(e)=>setPrepaidOneTime(e.target.checked)} className="h-2 w-2 accent-blue-600" />
                         One time use
                       </label>
                     </div>
@@ -285,7 +301,7 @@ export default function PointOfSale() {
                       </div>
 
                       <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                        <input type="checkbox" checked={giftEmailSend} onChange={(e)=>setGiftEmailSend(e.target.checked)} className="accent-blue-600" />
+                        <input type="checkbox" checked={giftEmailSend} onChange={(e)=>setGiftEmailSend(e.target.checked)} className="h-2 w-2 accent-blue-600" />
                         Send gift card by email
                       </label>
 
@@ -367,7 +383,7 @@ export default function PointOfSale() {
           </div>
 
           {/* Right: Collect payment */}
-          <div className="col-span-5 border rounded-md p-4">
+          <div className="col-span-6 border rounded-md p-3">
             <div className="text-sm font-medium text-gray-800 mb-2">Collect Payment</div>
             <div className="flex">
               <div className="w-40 border-r pr-3 space-y-2">
@@ -573,8 +589,6 @@ export default function PointOfSale() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
     {giftServiceDialogOpen && (
       <div className="fixed inset-0 z-50">
         <div className="absolute inset-0 bg-black/40" onClick={()=>setGiftServiceDialogOpen(false)} />
@@ -648,6 +662,5 @@ export default function PointOfSale() {
     />
     </>
   );
+
 }
-
-
