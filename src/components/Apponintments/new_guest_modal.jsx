@@ -3,32 +3,38 @@ import React, { useState } from 'react';
 // Guest creation API function
 async function createGuest(guestData, selectedCenter) {
   try {
+    const payload = {
+      center_id: (selectedCenter && selectedCenter.id) ? selectedCenter.id : "851e63e9-6332-4a72-bf24-7a3d035e0f21",
+      center_name: (selectedCenter && (selectedCenter.name || typeof selectedCenter === 'string')) ? (selectedCenter.name || selectedCenter) : "Oliva Banjara Hills",
+      username: guestData.username,
+      first_name: guestData.first_name,
+      middle_name: guestData.middle_name || '',
+      last_name: guestData.last_name,
+      email: guestData.email,
+      phone_no: guestData.phone_no,
+      home_no: guestData.home_no || '+91',
+      gender: guestData.gender,
+      is_minor: !!guestData.is_minor,
+      nationality: guestData.nationality || 'Indian',
+      language: guestData.language || 'English'
+    };
+    // Only include date_of_birth if provided (server rejects empty string)
+    if (guestData.date_of_birth) {
+      payload.date_of_birth = guestData.date_of_birth;
+    }
+
     const response = await fetch('http://127.0.0.1:8000/guests/', {
       method: 'POST',
       headers: {
         'accept': 'application/json',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        center_id: selectedCenter?.id || "851e63e9-6332-4a72-bf24-7a3d035e0f21",
-        center_name: selectedCenter?.name || "Oliva Banjara Hills",
-        username: guestData.username,
-        first_name: guestData.first_name,
-        middle_name: guestData.middle_name,
-        last_name: guestData.last_name,
-        email: guestData.email,
-        phone_no: guestData.phone_no,
-        home_no: guestData.home_no,
-        gender: guestData.gender,
-        date_of_birth: guestData.date_of_birth,
-        is_minor: guestData.is_minor,
-        nationality: guestData.nationality,
-        language: guestData.language
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const text = await response.text().catch(()=> '');
+      throw new Error(text || `HTTP error! status: ${response.status}`);
     }
 
     const result = await response.json();
@@ -75,7 +81,8 @@ export default function NewGuestModal({
         phone_no: mobile,
         home_no: '+91',
         gender: gender,
-        date_of_birth: '',
+        // Do not send empty date; leave undefined when not set
+        date_of_birth: undefined,
         is_minor: isMinor,
         nationality: 'Indian',
         language: 'English'

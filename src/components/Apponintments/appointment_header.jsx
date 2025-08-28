@@ -29,6 +29,42 @@ async function fetchCenters() {
   }
 }
 
+// Fetch guests from API
+async function fetchGuests({ skip = 0, limit = 500 } = {}) {
+  try {
+    const response = await fetch(`http://127.0.0.1:8000/guests/?skip=${skip}&limit=${limit}`, {
+      method: 'GET',
+      headers: { 'accept': 'application/json' },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const guests = await response.json();
+    // Normalize fields we care about
+    return guests.map(normalizeGuest);
+  } catch (error) {
+    console.error('Error fetching guests:', error);
+    return [];
+  }
+}
+
+function normalizeGuest(g) {
+  if (!g) return null;
+  return {
+    id: g.id,
+    centerName: g.center_name || g.centerName,
+    firstName: g.first_name || g.firstName,
+    middleName: g.middle_name || g.middleName,
+    lastName: g.last_name || g.lastName,
+    email: g.email,
+    phone: g.phone_no || g.phone,
+    gender: g.gender,
+    isMinor: typeof g.is_minor === 'boolean' ? g.is_minor : g.isMinor,
+    dob: g.date_of_birth || g.dob,
+    username: g.username,
+  };
+}
+
 function formatDateLong(date) {
   const formatter = new Intl.DateTimeFormat(undefined, {
     weekday: 'long',
@@ -75,6 +111,15 @@ export default function AppointmentHeader({
   // State for payment dropdown
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
 
+  // Guest search state
+  const [guestQuery, setGuestQuery] = useState('');
+  const [guests, setGuests] = useState([]);
+  const [guestsLoading, setGuestsLoading] = useState(false);
+  const [guestsError, setGuestsError] = useState(null);
+  const [guestDropdownOpen, setGuestDropdownOpen] = useState(false);
+  const [guestDebounceTimer, setGuestDebounceTimer] = useState(null);
+  const [createdGuests, setCreatedGuests] = useState([]);
+
   // Fetch centers on component mount
   useEffect(() => {
     const loadCenters = async () => {
@@ -116,6 +161,37 @@ export default function AppointmentHeader({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [paymentDropdownOpen]);
 
+  const runGuestSearch = async () => {
+    try {
+      setGuestsLoading(true);
+      setGuestsError(null);
+      const data = await fetchGuests({ skip: 0, limit: 1000 });
+      setGuests(data);
+      setGuestDropdownOpen(true);
+    } catch (err) {
+      console.error(err);
+      setGuestsError('Failed to load guests');
+      setGuests([]);
+      setGuestDropdownOpen(true);
+    } finally {
+      setGuestsLoading(false);
+    }
+  };
+
+  // Debounced search trigger on query change (client-side filter)
+  useEffect(() => {
+    if (!guestDropdownOpen) return; // only when open
+    if (guestDebounceTimer) clearTimeout(guestDebounceTimer);
+    const t = setTimeout(() => {
+      // If we don't have data yet, fetch once; otherwise just re-render (filtering happens in render)
+      if (guests.length === 0 && !guestsLoading) {
+        runGuestSearch();
+      }
+    }, 250);
+    setGuestDebounceTimer(t);
+    return () => clearTimeout(t);
+  }, [guestQuery]);
+
   // Handle center selection change
   const handleCenterChange = (centerName) => {
     setSelectedCenter(centerName);
@@ -143,11 +219,18 @@ export default function AppointmentHeader({
               <input
                 className="w-full rounded-md bg-white/95 text-blue-950 placeholder:text-blue-900/60 pl-9 pr-10 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
                 placeholder="Name, Phone, Email, Code"
+                value={guestQuery}
+                onChange={(e)=>setGuestQuery(e.target.value)}
+                onKeyDown={(e)=>{ if(e.key==='Enter'){ runGuestSearch(); } }}
+                onFocus={()=> {
+                  setGuestDropdownOpen(true);
+                  if (guests.length === 0 && !guestsLoading) runGuestSearch();
+                }}
               />
               <button
                 className="absolute inset-y-0 right-2 flex items-center text-blue-900/60 hover:text-blue-700"
                 onClick={() => setNewGuestModalOpen(true)}
-                title="Add New Guest"
+                title="New Guest"
               >
                 {/* contact/add icon */}
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -157,6 +240,43 @@ export default function AppointmentHeader({
                   <line x1="16" y1="11" x2="22" y2="11" />
                 </svg>
               </button>
+
+              {/* Guest results dropdown */}
+              {guestDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-full bg-white rounded-md shadow-lg border border-gray-200 max-h-64 overflow-auto z-50">
+                  {guestsLoading && (
+                    <div className="px-4 py-3 text-sm text-gray-600">Loading guests…</div>
+                  )}
+                  {guestsError && (
+                    <div className="px-4 py-3 text-sm text-red-600">{guestsError}</div>
+                  )}
+                  {!guestsLoading && !guestsError && guests.length === 0 && (
+                    <div className="px-4 py-3 text-sm text-gray-600">No guests found.</div>
+                  )}
+                  {!guestsLoading && !guestsError && [...createdGuests, ...guests.filter(apiG => !createdGuests.find(cg => cg.id === apiG.id))]
+                    .filter((g)=>{
+                      const q = guestQuery.trim().toLowerCase();
+                      if (!q) return true; // show all when no query
+                      const fullName = `${g.firstName || ''} ${g.lastName || ''}`.toLowerCase();
+                      return (
+                        fullName.includes(q) ||
+                        (g.email || '').toLowerCase().includes(q) ||
+                        (g.phone || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((g)=> (
+                    <div key={g.id} className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-blue-900 flex items-center justify-between" onClick={()=>{
+                      setGuestDropdownOpen(false);
+                    }}>
+                      <div>
+                        <div className="text-sm font-medium">{`${g.firstName || ''} ${g.lastName || ''}`.trim() || 'Unnamed'}</div>
+                        <div className="text-xs text-gray-600">{g.email || '—'} • {g.phone || '—'}</div>
+                      </div>
+                      <div className="text-xs text-gray-500">{g.gender || ''}{g.isMinor ? ' • Minor' : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -348,10 +468,22 @@ export default function AppointmentHeader({
         open={newGuestModalOpen}
         onClose={() => setNewGuestModalOpen(false)}
         onGuestCreated={(guest) => {
-          onGuestCreated(guest);
+          const normalized = normalizeGuest(guest);
+          setCreatedGuests((prev)=> {
+            const next = [normalized, ...prev.filter(g => g.id !== normalized.id)];
+            return next;
+          });
+          setGuests((prev)=> {
+            if (!prev.find(g => g.id === normalized.id)) {
+              return [normalized, ...prev];
+            }
+            return prev;
+          });
+          if (typeof onGuestCreated === 'function') onGuestCreated(guest);
           setNewGuestModalOpen(false);
+          setGuestDropdownOpen(true);
         }}
-        selectedCenter={selectedCenterProp}
+        selectedCenter={selectedCenter}
       />
     </div>
   );
