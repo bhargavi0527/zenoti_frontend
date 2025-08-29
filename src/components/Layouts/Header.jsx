@@ -60,14 +60,18 @@ function Header() {
   };
 
   return (
-    <div className="bg-white border-b border-gray-200 px-6 py-4">
-      <div className="flex items-center justify-between">
-        {/* Left Side - Brand and Location */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Oliva - Kerala</h1>
+    <div className="bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-3 sticky top-0 z-30 shadow-sm">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        {/* Left: Brand */}
+        <div className="flex items-center gap-3">
+          <img src="/logo1.png" alt="logo" className="h-8 w-8 rounded" />
+          <div>
+            <div className="text-lg font-semibold text-gray-900">Oliva Clinics</div>
+            <div className="text-xs text-gray-500">Kerala</div>
+          </div>
         </div>
 
-        {/* Right Side - Location Dropdown, Announcement, Profile, Chat */}
+        {/* Right: Controls */}
         <div className="flex items-center space-x-4">
           {/* Location Dropdown */}
           <div className="relative">
