@@ -8,6 +8,7 @@ import PointOfSale from './components/Apponintments/point_of_sale.jsx'
 import PointOfProducts from './components/Apponintments/point_of_products.jsx'
 import ServiceMaster from './components/Masters/service.jsx'
 import ProductsMaster from './components/Masters/products.jsx'
+import GuestProfile from './pages/GuestProfile.jsx'
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
         <Route path="/master/services" element={<ServiceMaster />} />
         <Route path="/master/products" element={<ProductsMaster />} />
         <Route path="/appointments" element={<Appointments />} />
+        <Route path="/guests/:guestId" element={<GuestProfile />} />
         <Route path="/pos" element={<PointOfSale />} />
         <Route path="/products-pos" element={<PointOfProducts />} />
       </Routes>

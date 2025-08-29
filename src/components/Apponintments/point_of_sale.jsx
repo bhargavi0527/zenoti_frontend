@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import NewGuestModal from './new_guest_modal';
 
 
@@ -10,6 +10,14 @@ export default function PointOfSale() {
   const [customPayment, setCustomPayment] = useState('');
   const [activeItemTab, setActiveItemTab] = useState('package');
   const [saleBy, setSaleBy] = useState('Koyyana Sai Mythree');
+  // Header guest form state
+  const [guestCode, setGuestCode] = useState('');
+  const [isMinor, setIsMinor] = useState(false);
+  const [mobileCountry, setMobileCountry] = useState('+91');
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
   // Prepaid card form state
   const [prepaidCardNumber, setPrepaidCardNumber] = useState('');
   const [prepaidPrice, setPrepaidPrice] = useState('');
@@ -38,6 +46,15 @@ export default function PointOfSale() {
   const [svcRoom, setSvcRoom] = useState('N/A');
   const [svcStart, setSvcStart] = useState('10:00 AM');
   const [svcEnd, setSvcEnd] = useState('10:15 AM');
+  const [services, setServices] = useState([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [rooms, setRooms] = useState([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  // Package tab state
+  const [packages, setPackages] = useState([]);
+  const [packagesLoading, setPackagesLoading] = useState(false);
+  const [selectedPackage, setSelectedPackage] = useState('');
+  const [packagePrice, setPackagePrice] = useState('');
   const timeOptions = [
     '09:00 AM','09:15 AM','09:30 AM','09:45 AM',
     '10:00 AM','10:15 AM','10:30 AM','10:45 AM',
@@ -65,7 +82,76 @@ export default function PointOfSale() {
   const [loyaltyAmount, setLoyaltyAmount] = useState('0.00');
   const [loyaltyPoints, setLoyaltyPoints] = useState('');
   const [invoiceNo, setInvoiceNo] = useState('');
-  const centerName = 'Corporate Training Center';
+  const [centerName, setCenterName] = useState('Corporate Training Center');
+  const fetchGuestByCode = async (code) => {
+    const trimmed = (code || '').trim();
+    if (!trimmed) return;
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/guests/${encodeURIComponent(trimmed)}`, {
+        headers: { accept: 'application/json' }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setCenterName(data?.center_name || '');
+      setFirstName(data?.first_name || '');
+      setLastName(data?.last_name || '');
+      setEmail(data?.email || '');
+      setGender(data?.gender || '');
+      setIsMinor(Boolean(data?.is_minor));
+      const cc = data?.home_no || '';
+      const fullPhone = data?.phone_no || '';
+      const local = cc && fullPhone.startsWith(cc) ? fullPhone.slice(cc.length) : fullPhone;
+      setMobileCountry(cc || '+');
+      setMobileNumber(local || '');
+    } catch (err) {
+      console.error('Failed to fetch guest by code', err);
+    }
+  };
+
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        setServicesLoading(true);
+        const res = await fetch('http://127.0.0.1:8000/services/', { headers: { accept: 'application/json' } });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data)) setServices(data);
+      } catch (e) {
+        console.error('Failed to fetch services', e);
+      } finally {
+        setServicesLoading(false);
+      }
+    };
+    const fetchRooms = async () => {
+      try {
+        setRoomsLoading(true);
+        const res = await fetch('http://127.0.0.1:8000/rooms/', { headers: { accept: 'application/json' } });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data)) setRooms(data);
+      } catch (e) {
+        console.error('Failed to fetch rooms', e);
+      } finally {
+        setRoomsLoading(false);
+      }
+    };
+    const fetchPackages = async () => {
+      try {
+        setPackagesLoading(true);
+        const res = await fetch('http://127.0.0.1:8000/packages/', { headers: { accept: 'application/json' } });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data)) setPackages(data);
+      } catch (e) {
+        console.error('Failed to fetch packages', e);
+      } finally {
+        setPackagesLoading(false);
+      }
+    };
+    fetchServices();
+    fetchRooms();
+    fetchPackages();
+  }, []);
 
   return (
     <>
@@ -79,29 +165,29 @@ export default function PointOfSale() {
              across centers
            </label>
            <label className="text-sm text-gray-700 flex items-center gap-2">
-             <input type="checkbox" className="h-3 w-3 accent-blue-600" />
+             <input type="checkbox" className="h-3 w-3 accent-blue-600" checked={isMinor} onChange={(e)=>setIsMinor(e.target.checked)} />
              Guest is a minor
            </label>
          </div>
          <div className="grid grid-cols-12 gap-2 items-center">
            <div className="col-span-2">
              <div className="text-xs text-gray-600 mb-1">Code</div>
-             <input className="w-full border rounded px-2 py-1 text-sm" />
+             <input className="w-full border rounded px-2 py-1 text-sm" value={guestCode} onChange={(e)=>setGuestCode(e.target.value)} onBlur={()=>fetchGuestByCode(guestCode)} onKeyDown={(e)=>{ if(e.key==='Enter'){ fetchGuestByCode(guestCode); } }} placeholder="Enter guest code" />
            </div>
            <div className="col-span-3">
              <div className="text-xs text-gray-600 mb-1">Mobile</div>
              <div className="flex gap-2">
-               <input className="w-14 border rounded px-2 py-1 text-sm" defaultValue="+91" />
-               <input className="flex-1 border rounded px-2 py-1 text-sm" />
+               <input className="w-14 border rounded px-2 py-1 text-sm" value={mobileCountry} onChange={(e)=>setMobileCountry(e.target.value)} />
+               <input className="flex-1 border rounded px-2 py-1 text-sm" value={mobileNumber} onChange={(e)=>setMobileNumber(e.target.value)} />
              </div>
            </div>
            <div className="col-span-3">
              <div className="text-xs text-gray-600 mb-1">First *</div>
-             <input className="w-full border rounded px-2 py-1 text-sm" />
+             <input className="w-full border rounded px-2 py-1 text-sm" value={firstName} onChange={(e)=>setFirstName(e.target.value)} />
            </div>
            <div className="col-span-4">
              <div className="text-xs text-gray-600 mb-1">Last *</div>
-             <input className="w-full border rounded px-2 py-1 text-sm" />
+             <input className="w-full border rounded px-2 py-1 text-sm" value={lastName} onChange={(e)=>setLastName(e.target.value)} />
            </div>
          </div>
          <div className="grid grid-cols-12 gap-2 items-center mt-2">
@@ -116,7 +202,7 @@ export default function PointOfSale() {
            </div>
            <div className="col-span-4">
              <div className="text-xs text-gray-600 mb-1">Email *</div>
-             <input className="w-full border rounded px-2 py-1 text-sm" />
+             <input className="w-full border rounded px-2 py-1 text-sm" value={email} onChange={(e)=>setEmail(e.target.value)} />
            </div>
            <div className="col-span-4">
              <div className="text-xs text-gray-600 mb-1">Referral</div>
@@ -148,8 +234,22 @@ export default function PointOfSale() {
               <div>
                 <div className="text-sm text-gray-700 mb-1">Packages</div>
                 <div className="flex gap-2 items-center">
-                  <select className="w-60 border rounded px-2 py-1 text-sm">
-                    <option>Select</option>
+                  <select 
+                    value={selectedPackage} 
+                    onChange={(e) => {
+                      const selectedPkg = e.target.value;
+                      setSelectedPackage(selectedPkg);
+                      const pkg = packages.find(p => p.name === selectedPkg);
+                      if (pkg && typeof pkg.series_package_cost_to_center !== 'undefined') {
+                        setPackagePrice(String(pkg.series_package_cost_to_center));
+                      }
+                    }}
+                    className="w-60 border rounded px-2 py-1 text-sm"
+                  >
+                    <option value="">{packagesLoading ? 'Loading…' : 'Select package'}</option>
+                    {packages.map((pkg) => (
+                      <option key={pkg.id} value={pkg.name}>{pkg.name}</option>
+                    ))}
                   </select>
                   <div className="flex gap-2">
                     <button className="h-8 w-8 rounded border text-blue-600">▶</button>
@@ -210,10 +310,44 @@ export default function PointOfSale() {
               </div>
               <div className="p-4 border rounded-b rounded-tr">
                 {activeItemTab === 'package' && (
-                  <div>
-                    <div className="text-sm text-gray-700 mb-2">Package</div>
-                    <input className="w-72 border rounded px-2 py-1 text-sm" placeholder="Select package" />
-                    <div className="mt-3 text-sm text-gray-700">Price</div>
+                  <div className="grid grid-cols-12 gap-x-8 gap-y-4">
+                    <div className="col-span-6">
+                      <div className="text-sm text-gray-700 mb-1">Package</div>
+                      <select
+                        value={selectedPackage}
+                        onChange={(e) => {
+                          const selectedPkg = e.target.value;
+                          setSelectedPackage(selectedPkg);
+                          const pkg = packages.find(p => p.name === selectedPkg);
+                          if (pkg && typeof pkg.series_package_cost_to_center !== 'undefined') {
+                            setPackagePrice(String(pkg.series_package_cost_to_center));
+                          }
+                        }}
+                        className="w-72 border rounded px-2 py-1 text-sm bg-white"
+                      >
+                        <option value="">{packagesLoading ? 'Loading…' : 'Select package'}</option>
+                        {packages.map((pkg) => (
+                          <option key={pkg.id} value={pkg.name}>{pkg.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-span-6">
+                      <div className="text-sm text-gray-700 mb-1">Price</div>
+                      <input 
+                        value={packagePrice} 
+                        onChange={(e) => setPackagePrice(e.target.value)} 
+                        className="w-40 border rounded px-2 py-1 text-sm" 
+                        placeholder="Package price"
+                      />
+                    </div>
+                    {selectedPackage && (
+                      <div className="col-span-12">
+                        <div className="text-sm text-gray-700 mb-1">Description</div>
+                        <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                          {packages.find(p => p.name === selectedPackage)?.description || 'No description available'}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {activeItemTab === 'membership' && (
@@ -327,14 +461,30 @@ export default function PointOfSale() {
                   <div className="grid grid-cols-12 gap-x-8 gap-y-4 items-center">
                     <div className="col-span-6">
                       <div className="text-sm text-gray-700 mb-1">Service</div>
-                      <input value={svcName} onChange={(e)=>setSvcName(e.target.value)} className="w-72 border rounded px-2 py-1 text-sm" />
+                      <select
+                        value={svcName}
+                        onChange={(e)=>{
+                          const selectedName = e.target.value;
+                          setSvcName(selectedName);
+                          const svc = services.find(s => s.name === selectedName);
+                          if (svc && typeof svc.price !== 'undefined') setSvcPrice(String(svc.price));
+                        }}
+                        className="w-72 border rounded px-2 py-1 text-sm bg-white"
+                      >
+                        <option value="">{servicesLoading ? 'Loading…' : 'Select service'}</option>
+                        {services.map((s) => (
+                          <option key={s.id || s.name} value={s.name}>{s.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="col-span-6">
                       <div className="text-sm text-gray-700 mb-1">Room</div>
-                      <select value={svcRoom} onChange={(e)=>setSvcRoom(e.target.value)} className="w-56 border rounded px-2 py-1 text-sm">
-                        <option>N/A</option>
-                        <option>Room 1</option>
-                        <option>Room 2</option>
+                      <select value={svcRoom} onChange={(e)=>setSvcRoom(e.target.value)} className="w-56 border rounded px-2 py-1 text-sm bg-white">
+                        <option value="">{roomsLoading ? 'Loading…' : 'Select room'}</option>
+                        <option value="N/A">N/A</option>
+                        {rooms.map((r) => (
+                          <option key={r.id || r.code} value={r.name}>{r.name}</option>
+                        ))}
                       </select>
                     </div>
                     <div className="col-span-6">

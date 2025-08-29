@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 /**
  * BookingSlots
@@ -25,6 +26,7 @@ export default function BookingSlots({
   onDeleteAppointment = () => {}
 }) {
   const totalSlots = useMemo(() => ((endHour - startHour) * 60) / slotMinutes, [endHour, startHour, slotMinutes]);
+  const navigate = useNavigate();
 
   const hourLabels = useMemo(() => {
     const labels = [];
@@ -74,6 +76,41 @@ export default function BookingSlots({
   const [apptMenu, setApptMenu] = useState({ open: false, x: 0, y: 0, appt: null, w: 420 });
   const [apptMoreOpen, setApptMoreOpen] = useState(false);
   const [apptMoreBelowOpen, setApptMoreBelowOpen] = useState(false);
+
+  // Resize by dragging (horizontal) state
+  const [resizing, setResizing] = useState({ active: false, appt: null, startX: 0, containerW: 1, initialSlots: 0, currentSlots: 0 });
+  const overlayRef = useRef(null);
+
+  useEffect(() => {
+    if (!resizing.active) return undefined;
+    const onMove = (e) => {
+      const deltaX = e.clientX - resizing.startX;
+      const slotsPerPixel = totalSlots / Math.max(1, resizing.containerW);
+      const deltaSlots = Math.round(deltaX * slotsPerPixel);
+      const maxSlots = Math.max(1, totalSlots - (resizing.appt?.startIndex ?? 0));
+      const next = Math.min(maxSlots, Math.max(1, resizing.initialSlots + deltaSlots));
+      setResizing((r) => ({ ...r, currentSlots: next }));
+    };
+    const onUp = () => {
+      setResizing((r) => {
+        if (r.active && r.appt) {
+          try { onEditAppointment({ ...r.appt, durationSlots: r.currentSlots || r.initialSlots }); } catch (_) {}
+        }
+        return { active: false, appt: null, startX: 0, containerW: 1, initialSlots: 0, currentSlots: 0 };
+      });
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [resizing.active, resizing.startX, resizing.containerW, resizing.initialSlots, totalSlots, onEditAppointment]);
+
+  const startResize = (e, appt) => {
+    e.stopPropagation();
+    const rect = overlayRef.current ? overlayRef.current.getBoundingClientRect() : { width: 1 };
+    setResizing({ active: true, appt, startX: e.clientX, containerW: rect.width, initialSlots: appt.durationSlots || 1, currentSlots: appt.durationSlots || 1 });
+  };
 
   // Close pinned popover on outside click or ESC
   useEffect(() => {
@@ -269,12 +306,13 @@ export default function BookingSlots({
             })()}
           </div>
         )}
-        <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 pointer-events-none" ref={overlayRef}>
           {getResourceAppointments(resource).map((a) => {
+            const effectiveSlots = (resizing.active && resizing.appt && resizing.appt.id === a.id) ? resizing.currentSlots : a.durationSlots;
             const leftPct = (a.startIndex / totalSlots) * 100;
-            const widthPct = (a.durationSlots / totalSlots) * 100;
+            const widthPct = (effectiveSlots / totalSlots) * 100;
             const startLabel = indexToLabel(a.startIndex);
-            const endLabel = indexToLabel(Math.min(totalSlots, a.startIndex + a.durationSlots));
+            const endLabel = indexToLabel(Math.min(totalSlots, a.startIndex + effectiveSlots));
             const fullName = `${a.guestFirstName || ''} ${a.guestLastName || ''}`.trim();
             const phone = a.guestPhone || '';
             const serviceName = Array.isArray(a.services) && a.services.length > 0 ? a.services[0].serviceName : '';
@@ -308,6 +346,7 @@ export default function BookingSlots({
                 <div className="text-[10px] leading-tight">
                   {a.label}
                 </div>
+                {/* Drag-to-extend disabled */}
 
                 {infoApptId === a.id && (
                   <div ref={popRef} className={`absolute ${popoverPositionClasses()} bg-white text-gray-900 rounded-md shadow-lg border border-gray-200 w-80 z-[130] pointer-events-auto`}>
@@ -547,7 +586,21 @@ export default function BookingSlots({
                 <div>
                   {/* Header */}
                   <div className="bg-blue-900 text-white px-4 py-3 flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-sm">D</div>
+                    <button
+                      className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-sm hover:bg-white/30"
+                      title="Open guest profile"
+                      onClick={() => {
+                        const guestCode = (a.guestCode || a.guestId || a.guest_backend_id || '').toString() || (a.guestPhone || '').toString();
+                        const fallback = {
+                          first_name: a.guestFirstName || '',
+                          last_name: a.guestLastName || '',
+                          phone_no: a.guestPhone || '',
+                          email: a.guestEmail || '',
+                          gender: a.guestGender || '',
+                        };
+                        if (guestCode) navigate(`/guests/${encodeURIComponent(guestCode)}`, { state: { guestFallback: fallback } });
+                      }}
+                    >D</button>
                     <div className="flex-1">
                       <div className="font-semibold leading-5">{fullName}</div>
                       {phone && <div className="text-xs text-white/90">{phone}</div>}
