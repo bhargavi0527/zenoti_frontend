@@ -43,7 +43,7 @@ export default function ServiceMaster() {
         const normalized = Array.isArray(data)
           ? data.map((s, idx) => ({
               id: s.id ?? idx,
-              code: s.code || String(s.id || idx),
+              code: s.service_code || s.code || String(s.id || idx),
               name: s.name || s.title || 'Untitled',
               price: s.price ?? 0,
               isActive: s.is_active ?? true,

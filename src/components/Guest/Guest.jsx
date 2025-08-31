@@ -5,24 +5,40 @@ export default function GuestTable() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [rows, setRows] = useState([]);
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
+  const [hasNext, setHasNext] = useState(false);
   const navigate = useNavigate();
 
   const loadGuests = async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`http://127.0.0.1:8000/guests/?skip=${page * pageSize}&limit=${pageSize}`, {
+      const skip = (page - 1) * pageSize;
+      const res = await fetch(`http://127.0.0.1:8000/guests/?skip=${skip}&limit=${pageSize}`, {
         headers: { accept: 'application/json' }
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setRows(Array.isArray(data) ? data : []);
+
+      // Lookahead to determine if next page exists
+      try {
+        const nextRes = await fetch(`http://127.0.0.1:8000/guests/?skip=${skip + pageSize}&limit=1`, {
+          headers: { accept: 'application/json' }
+        });
+        if (!nextRes.ok) throw new Error('head check failed');
+        const nextData = await nextRes.json();
+        setHasNext(Array.isArray(nextData) && nextData.length > 0);
+      } catch {
+        // Fallback: infer from current page size
+        setHasNext(Array.isArray(data) && data.length === pageSize);
+      }
     } catch (e) {
       console.error('Failed to fetch guests', e);
       setError('Failed to fetch guests');
       setRows([]);
+      setHasNext(false);
     } finally {
       setLoading(false);
     }
@@ -36,30 +52,52 @@ export default function GuestTable() {
 
   return (
     <div className="mt-6">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-gray-700">Guests (page {page + 1})</div>
-        <div className="flex items-center gap-2">
-          <button className="px-3 py-1 border rounded" disabled={page === 0} onClick={() => setPage((p)=>Math.max(0, p-1))}>Prev</button>
-          <button className="px-3 py-1 border rounded" onClick={() => setPage((p)=>p+1)}>Next</button>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm text-gray-700">Guests</div>
+        <div className="flex items-center gap-1">
+          <button
+            className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+            disabled={page === 1}
+            onClick={() => setPage((p)=>Math.max(1, p-1))}
+          >Prev</button>
+          {/* Page numbers: previous, current, next */}
+          {page > 2 && (
+            <>
+              <button className="px-2 py-1 text-sm border rounded" onClick={() => setPage(1)}>1</button>
+              <span className="px-1 text-gray-500">…</span>
+            </>
+          )}
+          {page > 1 && (
+            <button className="px-2 py-1 text-sm border rounded" onClick={() => setPage(page-1)}>{page-1}</button>
+          )}
+          <button className="px-2 py-1 text-sm border rounded bg-blue-600 text-white">{page}</button>
+          {hasNext && (
+            <button className="px-2 py-1 text-sm border rounded" onClick={() => setPage(page+1)}>{page+1}</button>
+          )}
+          <button
+            className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+            disabled={!hasNext}
+            onClick={() => setPage((p)=>p+1)}
+          >Next</button>
         </div>
       </div>
-      <div className="w-full overflow-auto border rounded">
+      <div className="w-full overflow-auto border rounded shadow-sm">
         <table className="min-w-full text-sm">
-          <thead>
-            <tr className="text-left text-gray-600 border-b bg-gray-50">
-              {headers.map(h => (<th key={h} className="px-3 py-2">{h}</th>))}
+          <thead className="bg-gray-50 sticky top-0 z-10">
+            <tr className="text-left text-gray-600 border-b">
+              {headers.map(h => (<th key={h} className="px-3 py-2 font-medium">{h}</th>))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y">
             {loading ? (
-              <tr><td className="px-3 py-3 text-gray-500" colSpan={headers.length}>Loading…</td></tr>
+              <tr><td className="px-3 py-6 text-center text-gray-500" colSpan={headers.length}>Loading…</td></tr>
             ) : error ? (
-              <tr><td className="px-3 py-3 text-red-600" colSpan={headers.length}>{error}</td></tr>
+              <tr><td className="px-3 py-6 text-center text-red-600" colSpan={headers.length}>{error}</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td className="px-3 py-3 text-gray-500" colSpan={headers.length}>No guests found</td></tr>
+              <tr><td className="px-3 py-6 text-center text-gray-500" colSpan={headers.length}>No guests found</td></tr>
             ) : (
-              rows.map((g) => (
-                <tr key={g.id} className="border-b last:border-b-0">
+              rows.map((g, idx) => (
+                <tr key={g.id || idx} className="hover:bg-gray-50">
                   <td className="px-3 py-2 font-medium">{g.guest_code || ''}</td>
                   <td className="px-3 py-2">{g.first_name || ''}</td>
                   <td className="px-3 py-2">{g.last_name || ''}</td>

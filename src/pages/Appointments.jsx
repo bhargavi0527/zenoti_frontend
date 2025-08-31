@@ -33,6 +33,63 @@ async function fetchDoctors() {
   }
 }
 
+// Fetch guest details by ID
+async function fetchGuestById(guestId) {
+  try {
+    console.log('Fetching guest details for ID:', guestId);
+    const response = await fetch(`http://127.0.0.1:8000/guests/${guestId}`, {
+      method: 'GET',
+      headers: {
+        'accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const guest = await response.json();
+    console.log('Fetched guest details:', guest);
+    return {
+      id: guest.id,
+      firstName: guest.first_name,
+      lastName: guest.last_name,
+      email: guest.email,
+      phone: guest.phone_no,
+      gender: guest.gender,
+      isMinor: guest.is_minor,
+      guestCode: guest.guest_code
+    };
+  } catch (error) {
+    console.error('Error fetching guest:', error);
+    return null;
+  }
+}
+
+// Fetch appointment slots by date
+async function fetchAppointmentSlots(appointmentDate) {
+  try {
+    console.log('Fetching appointment slots for date:', appointmentDate);
+    const response = await fetch(`http://127.0.0.1:8000/appointments/slots/?appointment_date=${appointmentDate}`, {
+      method: 'GET',
+      headers: {
+        'accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const slots = await response.json();
+    console.log('Fetched appointment slots:', slots);
+    return Array.isArray(slots) ? slots : [];
+  } catch (error) {
+    console.error('Error fetching appointment slots:', error);
+    return [];
+  }
+}
+
 // Fetch services from API
 async function fetchServices() {
   try {
@@ -247,72 +304,11 @@ function Appointments() {
         if (Array.isArray(parsed)) return parsed;
       } catch {}
     }
-    return [
-    // {
-    //   id: 'a1',
-    //   resource: 'Consultation Room 1',
-    //   startIndex: 5, // 9:00 + 5*15 = 10:15
-    //   durationSlots: 4,
-    //   label: 'Doctor Unassigned',
-    //   color: 'bg-teal-200 text-teal-900',
-    //   createdBy: 'Admin'
-    // },
-    // {
-    //   id: 'a2',
-    //   resource: 'Consultation Room 1',
-    //   startIndex: 20, // ~2 PM
-    //   durationSlots: 2,
-    //   label: 'New',
-    //   color: 'bg-amber-200 text-amber-900',
-    //   createdBy: 'Admin'
-    // },
-    // {
-    //   id: 'a3',
-    //   resource: 'Treatment Room',
-    //   startIndex: 4,
-    //   durationSlots: 36, // long block "No Doctor"
-    //   label: 'No Doctor',
-    //   color: 'bg-blue-800 text-white',
-    //   createdBy: 'Admin'
-    // },
-    // {
-    //   id: 'a4',
-    //   resource: 'Physiotherapy Room',
-    //   startIndex: 12,
-    //   durationSlots: 6,
-    //   label: 'Komal Sahu (+91 94 14 010571)',
-    //   color: 'bg-green-200 text-green-900',
-    //   createdBy: 'Admin'
-    // },
-    // {
-    //   id: 'a5',
-    //   resource: 'Counseling Room',
-    //   startIndex: 20,
-    //   durationSlots: 16,
-    //   label: 'VarshaG. (+91 8464 840 423)',
-    //   color: 'bg-green-200 text-green-900',
-    //   createdBy: 'Admin'
-    // },
-    // {
-    //   id: 'a6',
-    //   resource: 'Counseling Room',
-    //   startIndex: 14,
-    //   durationSlots: 8,
-    //   label: 'Rashmi. (+91 8595 116 529)',
-    //   color: 'bg-green-200 text-green-900',
-    //   createdBy: 'Admin'
-    // },
-    // {
-    //   id: 'a7',
-    //   resource: 'General Consultation Room',
-    //   startIndex: 8,
-    //   durationSlots: 4,
-    //   label: 'Vinita K',
-    //   color: 'bg-green-200 text-green-900',
-    //   createdBy: 'Admin'
-    // }
-  ];
+    return [];
   });
+  
+  // State for loading appointments
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
 
   const resources = activeTab === 'rooms' ? rooms.map(room => room.name) : doctors.map(d => d.name);
 
@@ -408,8 +404,11 @@ function Appointments() {
       const minutes = dt.getHours() * 60 + dt.getMinutes();
       const startMinutes = START_HOUR * 60;
       const diff = Math.max(0, minutes - startMinutes);
-      return Math.floor(diff / SLOT_MINUTES);
-    } catch {
+      const startIndex = Math.floor(diff / SLOT_MINUTES);
+      console.log('Time calculation:', { iso, dt, minutes, startMinutes, diff, startIndex, START_HOUR, SLOT_MINUTES });
+      return startIndex;
+    } catch (error) {
+      console.error('Error calculating start index from ISO:', iso, error);
       return 0;
     }
   };
@@ -417,6 +416,7 @@ function Appointments() {
   // Fetch backend appointments for currentDate and map onto grid by time
   useEffect(() => {
     const loadAppointments = async () => {
+      setAppointmentsLoading(true);
       try {
         // Start from locally saved appointments for the selected day
         const savedRaw = localStorage.getItem(storageKeyForDate(currentDate));
@@ -428,37 +428,106 @@ function Appointments() {
           } catch {}
         }
 
-        const res = await fetch('http://127.0.0.1:8000/appointments/', {
-          method: 'GET',
-          headers: { 'accept': 'application/json' }
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const all = await res.json();
         const dayStr = formatYmd(currentDate);
-        const filtered = Array.isArray(all) ? all.filter(a => a.appointment_date === dayStr) : [];
-        const backendAppts = filtered.map(a => {
-          const provider = doctors.find(d => d.id === a.provider_id);
-          const service = services.find(s => s.id === a.service_id);
-          return {
-            id: a.id,
-            resource: activeTab === 'doctors' ? (provider?.name || 'Unknown Doctor') : (provider?.name || 'Unknown'),
-            startIndex: getStartIndexFromIso(a.scheduled_time),
-            durationSlots: 4,
+        console.log('Loading appointments for date:', dayStr);
+        console.log('Current date object:', currentDate);
+        console.log('Formatted date string:', dayStr);
+        const slots = await fetchAppointmentSlots(dayStr);
+        console.log('API response slots:', slots);
+        
+        // Process slots and fetch guest details
+        const backendAppts = [];
+        for (const slot of slots) {
+          console.log('Processing slot:', slot);
+          const provider = doctors.find(d => d.id === slot.provider_id);
+          const service = services.find(s => s.id === slot.service_id);
+          
+          // Fetch guest details if guest_id is available
+          let guestDetails = null;
+          if (slot.guest_id) {
+            guestDetails = await fetchGuestById(slot.guest_id);
+          }
+          
+          // Determine the resource based on active tab
+          let resourceName;
+          if (activeTab === 'doctors') {
+            resourceName = provider?.name || 'Unknown Doctor';
+          } else {
+            // For rooms mode, we need to assign a room
+            // Since the API doesn't provide room info, we'll distribute appointments across available rooms
+            if (rooms.length > 0) {
+              // Distribute appointments across rooms based on their index
+              const roomIndex = backendAppts.length % rooms.length;
+              resourceName = rooms[roomIndex].name;
+            } else {
+              resourceName = 'General Consultation Room';
+            }
+          }
+          
+          console.log('Resource assignment:', { activeTab, resourceName, providerName: provider?.name, roomsCount: rooms.length });
+          
+          const appointment = {
+            id: slot.id,
+            resource: resourceName,
+            startIndex: getStartIndexFromIso(slot.scheduled_time),
+            durationSlots: 4, // Default duration, can be calculated from service duration
             label: service?.name || 'Appointment',
             color: 'bg-green-200 text-green-900',
             doctor: provider?.name || '',
             services: service ? [{ serviceName: service.name, serviceId: service.id }] : [],
             createdBy: 'System',
-            backendAppointmentId: a.id
+            backendAppointmentId: slot.id,
+            guestId: slot.guest_id,
+            guestFirstName: guestDetails?.firstName || '',
+            guestLastName: guestDetails?.lastName || '',
+            guestEmail: guestDetails?.email || '',
+            guestPhone: guestDetails?.phone || '',
+            guestGender: guestDetails?.gender || '',
+            guestIsMinor: guestDetails?.isMinor || false,
+            guestCode: guestDetails?.guestCode || '',
+            appointmentDate: slot.appointment_date,
+            scheduledTime: slot.scheduled_time,
+            status: slot.status,
+            notes: slot.notes
           };
-        });
+          
+          console.log('Created appointment object:', appointment);
+          backendAppts.push(appointment);
+        }
 
         // Merge: backend wins by same id; keep local-only (e.g., "new-..." items)
         const byId = new Map();
         localForDay.forEach(item => byId.set(item.id, item));
         backendAppts.forEach(item => byId.set(item.id, item));
         const merged = Array.from(byId.values());
-        setAppointments(merged);
+        console.log('Appointments: Final merged appointments:', merged);
+        
+        // If no appointments found, add some test data for debugging
+        if (merged.length === 0) {
+          console.log('No appointments found, adding test data for debugging');
+          const testAppointment = {
+            id: 'test-1',
+            resource: activeTab === 'doctors' ? (doctors[0]?.name || 'Test Doctor') : (rooms[0]?.name || 'Test Room'),
+            startIndex: 8, // 10:00 AM
+            durationSlots: 4,
+            label: 'Test Appointment',
+            color: 'bg-red-200 text-red-900',
+            doctor: doctors[0]?.name || 'Test Doctor',
+            services: [],
+            createdBy: 'System',
+            guestFirstName: 'Test',
+            guestLastName: 'Guest',
+            guestPhone: '+1234567890',
+            appointmentDate: dayStr,
+            scheduledTime: new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 10, 0, 0).toISOString(),
+            status: 'scheduled',
+            notes: 'Test appointment for debugging'
+          };
+          setAppointments([testAppointment]);
+        } else {
+          setAppointments(merged);
+        }
+
       } catch (err) {
         console.error('Failed to load appointments:', err);
         // On failure, fall back to locally saved data (if any)
@@ -469,6 +538,8 @@ function Appointments() {
             if (Array.isArray(parsed)) setAppointments(parsed);
           } catch {}
         }
+      } finally {
+        setAppointmentsLoading(false);
       }
     };
 
@@ -476,7 +547,7 @@ function Appointments() {
     if (doctors.length > 0 || services.length > 0) {
       loadAppointments();
     }
-  }, [currentDate, doctors, services]);
+  }, [currentDate, doctors, services, rooms, activeTab]);
 
   const renderRow = (resource) => {
     return (
@@ -580,54 +651,65 @@ function Appointments() {
                 </div>
               </div>
             ) : (
-            <BookingSlots
-              startHour={START_HOUR}
-              endHour={END_HOUR}
-              slotMinutes={SLOT_MINUTES}
-              currentDate={currentDate}
-              activeTab={activeTab}
-              orientation={orientation}
-              rooms={rooms}
-              doctors={doctors}
-              appointments={appointments}
-              onDropOnCell={(appointmentId, resource, idx) => handleDropOnCell(appointmentId, resource, idx)}
-              onDragStart={onDragStart}
-              onAppointmentClick={(appt) => {
-                setDialogState({ open: true, index: appt.startIndex, resource: appt.resource, mode: 'edit', appt });
-              }}
-              onCreateAppointment={({ index, resource, durationSlots }) => {
-                const apptInit = durationSlots ? { startIndex: index, resource, durationSlots } : null;
-                setDialogState({ open: true, index, resource, mode: 'create', appt: apptInit });
-              }}
-              onCreateGroupAppointment={({ index, resource }) => {
-                console.log('Open group appointment dialog', { index, resource });
-              }}
-              onBlockoutTime={({ index, resource, reason }) => {
-                if (reason) {
-                  // Quick create directly from submenu
-                  if (hasConflict(resource, index, 4)) {
-                    alert('Time conflict: this resource already has an appointment in that time.');
-                    return;
-                  }
-                  setAppointments((prev) => [
-                    ...prev,
-                    {
-                      id: `block-${Date.now()}`,
-                      resource,
-                      startIndex: index,
-                      durationSlots: 4,
-                      label: reason,
-                      color: 'bg-blue-800 text-white',
-                      createdBy: 'Admin'
+              <>
+                {appointmentsLoading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <p className="text-gray-600">Loading appointments...</p>
+                </div>
+              </div>
+            ) : (
+              <BookingSlots
+                startHour={START_HOUR}
+                endHour={END_HOUR}
+                slotMinutes={SLOT_MINUTES}
+                currentDate={currentDate}
+                activeTab={activeTab}
+                orientation={orientation}
+                rooms={rooms}
+                doctors={doctors}
+                appointments={appointments}
+                onDropOnCell={(appointmentId, resource, idx) => handleDropOnCell(appointmentId, resource, idx)}
+                onDragStart={onDragStart}
+                onAppointmentClick={(appt) => {
+                  setDialogState({ open: true, index: appt.startIndex, resource: appt.resource, mode: 'edit', appt });
+                }}
+                onCreateAppointment={({ index, resource, durationSlots }) => {
+                  const apptInit = durationSlots ? { startIndex: index, resource, durationSlots } : null;
+                  setDialogState({ open: true, index, resource, mode: 'create', appt: apptInit });
+                }}
+                onCreateGroupAppointment={({ index, resource }) => {
+                  console.log('Open group appointment dialog', { index, resource });
+                }}
+                onBlockoutTime={({ index, resource, reason }) => {
+                  if (reason) {
+                    // Quick create directly from submenu
+                    if (hasConflict(resource, index, 4)) {
+                      alert('Time conflict: this resource already has an appointment in that time.');
+                      return;
                     }
-                  ]);
-                } else {
-                  setBlockoutState({ open: true, index, resource });
-                }
-              }}
-              onEditAppointment={(appt) => setDialogState({ open: true, index: appt.startIndex, resource: appt.resource, mode: 'edit', appt })}
-              onDeleteAppointment={(appt) => setAppointments((prev) => prev.filter((a) => a.id !== appt.id))}
-            />
+                    setAppointments((prev) => [
+                      ...prev,
+                      {
+                        id: `block-${Date.now()}`,
+                        resource,
+                        startIndex: index,
+                        durationSlots: 4,
+                        label: reason,
+                        color: 'bg-blue-800 text-white',
+                        createdBy: 'Admin'
+                      }
+                    ]);
+                  } else {
+                    setBlockoutState({ open: true, index, resource });
+                  }
+                }}
+                onEditAppointment={(appt) => setDialogState({ open: true, index: appt.startIndex, resource: appt.resource, mode: 'edit', appt })}
+                onDeleteAppointment={(appt) => setAppointments((prev) => prev.filter((a) => a.id !== appt.id))}
+              />
+                )}
+              </>
             )}
           </div>
       <AppointmentDialog
@@ -663,8 +745,9 @@ function Appointments() {
                 guestLastName: payload.guestLastName,
                 guestEmail: payload.guestEmail,
                 guestGender: payload.guestGender,
+                guestIsMinor: payload.isMinor,
                 referral: payload.referral,
-                isMinor: payload.isMinor,
+                guestCode: payload.guestCode,
                 createdBy: 'Admin',
                 backendAppointmentId: payload.backendAppointmentId || null
               }

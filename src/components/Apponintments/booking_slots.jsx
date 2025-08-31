@@ -49,7 +49,53 @@ export default function BookingSlots({
   }, [startHour, endHour, slotMinutes]);
 
   const resources = activeTab === 'rooms' ? rooms.map(room => room.name) : doctors.map(d => d.name || d);
-  const getResourceAppointments = (resource) => appointments.filter((a) => a.resource === resource);
+  console.log('BookingSlots: Active tab:', activeTab);
+  console.log('BookingSlots: Resources:', resources);
+  console.log('BookingSlots: Rooms:', rooms);
+  console.log('BookingSlots: Doctors:', doctors);
+  // Only show appointments for the selected currentDate if appointment objects carry a date field
+  const dayStr = useMemo(() => {
+    const yyyy = currentDate.getFullYear();
+    const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(currentDate.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, [currentDate]);
+
+  const appointmentsForGrid = useMemo(() => {
+    console.log('BookingSlots: Filtering appointments for date:', dayStr);
+    console.log('BookingSlots: All appointments:', appointments);
+    
+    const filtered = (appointments || []).filter((a) => {
+      const apptDate = a.appointment_date || a.appointmentDate || null;
+      if (!apptDate) {
+        console.log('BookingSlots: Appointment has no date, including:', a);
+        return true; // local-only items are saved per-day upstream
+      }
+      const matches = apptDate === dayStr;
+      console.log('BookingSlots: Appointment date check:', { apptDate, dayStr, matches, appointment: a });
+      return matches;
+    });
+    
+    console.log('BookingSlots: Filtered appointments:', filtered);
+    return filtered;
+  }, [appointments, dayStr]);
+
+  const getResourceAppointments = (resource) => {
+    const resourceAppts = appointmentsForGrid.filter((a) => a.resource === resource);
+    console.log('BookingSlots: Appointments for resource', resource, ':', resourceAppts);
+    
+    // If no appointments found for this resource, check if there are any appointments that could be assigned here
+    if (resourceAppts.length === 0 && appointmentsForGrid.length > 0) {
+      console.log('BookingSlots: No appointments for resource', resource, 'but there are', appointmentsForGrid.length, 'total appointments');
+      // For debugging, let's show all appointments on the first resource
+      if (resources.indexOf(resource) === 0) {
+        console.log('BookingSlots: Showing all appointments on first resource for debugging');
+        return appointmentsForGrid;
+      }
+    }
+    
+    return resourceAppts;
+  };
 
   const onDragOver = (e) => e.preventDefault();
 
@@ -462,7 +508,7 @@ export default function BookingSlots({
               </div>
               {/* Appointments overlay */}
               <div className="absolute inset-0 pointer-events-none">
-                {appointments.map((a) => {
+                {appointmentsForGrid.map((a) => {
                   const colIdx = resources.indexOf(a.resource);
                   if (colIdx < 0) return null;
                   const topPct = (a.startIndex / totalSlots) * 100;

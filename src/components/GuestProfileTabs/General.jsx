@@ -42,11 +42,14 @@ export default function GeneralTab({ guest }) {
     mm_point_statement: true,
     loyalty_opt_in: false,
   });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     setForm((f) => ({
       ...f,
-      code: guest?.code || guest?.id || '',
+      code: guest?.guest_code || guest?.code || '',
       first_name: guest?.first_name || '',
       last_name: guest?.last_name || '',
       email: guest?.email || '',
@@ -54,13 +57,34 @@ export default function GeneralTab({ guest }) {
       gender: guest?.gender || '',
       is_minor: Boolean(guest?.is_minor),
       referral: guest?.referral || '',
-      referral_code: guest?.referral_code || guest?.code || '',
+      referral_code: (() => {
+        const gc = guest?.guest_code || guest?.code || '';
+        const rc = guest?.referral_code || '';
+        return rc && rc === gc ? rc : '';
+      })(),
       center_name: guest?.center_name || '',
       pin_code: guest?.pin_code || guest?.pin || '',
       nationality: guest?.nationality || '',
       country: guest?.country || 'India',
       state: guest?.state || 'Telangana',
     }));
+
+    // Prefill birthday selects from guest.date_of_birth (YYYY-MM-DD)
+    const dob = guest?.date_of_birth;
+    if (dob && typeof dob === 'string' && dob.length >= 10) {
+      const yyyy = dob.slice(0, 4);
+      const mm = dob.slice(5, 7);
+      const dd = dob.slice(8, 10);
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const monthIndex = Number(mm) - 1;
+      const monthName = monthIndex >= 0 && monthIndex < 12 ? monthNames[monthIndex] : '';
+      setForm((f) => ({
+        ...f,
+        birthday_year: yyyy || '',
+        birthday_month: monthName || '',
+        birthday_day: dd ? String(Number(dd)) : ''
+      }));
+    }
   }, [guest]);
 
   const on = (key) => ({
@@ -74,6 +98,67 @@ export default function GeneralTab({ guest }) {
   ];
   const yearOptions = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i));
 
+  const monthToNumber = (m) => {
+    const map = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+    return map[m] || '';
+  };
+
+  const computeDob = () => {
+    if (form.birthday_year && form.birthday_month && form.birthday_day) {
+      const mm = monthToNumber(form.birthday_month);
+      const dd = String(form.birthday_day).padStart(2, '0');
+      if (mm) return `${form.birthday_year}-${mm}-${dd}`;
+    }
+    return guest?.date_of_birth || '';
+  };
+
+  const onSave = async () => {
+    const code = guest?.guest_code || guest?.code || form.code;
+    if (!code) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+    try {
+      const payload = {
+        center_id: form.center_id || guest?.center_id,
+        center_name: form.center_name || guest?.center_name,
+        username: form.username || guest?.username,
+        first_name: form.first_name || guest?.first_name,
+        middle_name: form.middle_name || guest?.middle_name,
+        last_name: form.last_name || guest?.last_name,
+        email: form.email || guest?.email,
+        phone_no: form.phone_no || guest?.phone_no,
+        home_no: form.home_no || guest?.home_no,
+        gender: form.gender || guest?.gender,
+        date_of_birth: computeDob() || guest?.date_of_birth,
+        is_minor: typeof form.is_minor === 'boolean' ? form.is_minor : Boolean(guest?.is_minor),
+        nationality: form.nationality || guest?.nationality,
+        language: form.language || guest?.language,
+        id: guest?.id,
+        guest_code: code,
+        created_at: guest?.created_at,
+        updated_at: new Date().toISOString()
+      };
+
+      const res = await fetch(`http://127.0.0.1:8000/guests/${encodeURIComponent(code)}`, {
+        method: 'PUT',
+        headers: {
+          'accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await res.json();
+      setSaveSuccess(true);
+    } catch (e) {
+      setSaveError('Failed to update guest');
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    }
+  };
+
   return (
     <div className="p-1">
       <div className="grid grid-cols-12 gap-8">
@@ -81,6 +166,8 @@ export default function GeneralTab({ guest }) {
         <div className="col-span-12 md:col-span-6">
           <div className="text-gray-900 font-medium mb-3">Personal Info</div>
           <div className="space-y-3">
+            {saveError && (<div className="text-sm text-red-600">{saveError}</div>)}
+            {saveSuccess && (<div className="text-sm text-green-700">Guest updated</div>)}
             <div>
               <div className="text-sm text-gray-500">Customer ID</div>
               <input className="w-full border rounded px-2 py-1 text-sm bg-gray-100" readOnly {...on('code')} />
@@ -290,6 +377,15 @@ export default function GeneralTab({ guest }) {
             </label>
           </div>
         </div>
+      </div>
+      <div className="mt-6">
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className={`px-4 py-2 rounded text-white ${saving ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+        >
+          {saving ? 'Updating...' : 'Update Guest'}
+        </button>
       </div>
     </div>
   );
