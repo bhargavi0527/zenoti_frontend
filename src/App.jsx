@@ -23,7 +23,7 @@ function App() {
         <Route path="/master/products" element={<ProductsMaster />} />
         <Route path="/appointments" element={<Appointments />} />
         <Route path="/guest" element={<GuestLanding />} />
-        <Route path="/guests/:guestId" element={<GuestProfile />} />
+        <Route path="/guest-profile/:guestId" element={<GuestProfile />} />
         <Route path="/pos" element={<PointOfSale />} />
         <Route path="/products-pos" element={<PointOfProducts />} />
       </Routes>

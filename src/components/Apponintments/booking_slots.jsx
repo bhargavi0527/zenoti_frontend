@@ -5,6 +5,16 @@ import { useNavigate } from 'react-router-dom';
  * BookingSlots
  * Renders the time grid with resources on the left and 15-min slots across the day.
  * Keeps layout identical to what Appointments.jsx had, but extracted to a component.
+ * 
+ * Expected appointment data structure:
+ * {
+ *   id: string,
+ *   resource: string,           // Must match a resource name from rooms/doctors
+ *   startIndex: number,         // Slot index where appointment starts
+ *   durationSlots: number,      // Number of 15-min slots the appointment takes
+ *   appointment_date: string,   // Date in YYYY-MM-DD format
+ *   // ... other fields
+ * }
  */
 export default function BookingSlots({
   startHour = 9,
@@ -53,47 +63,104 @@ export default function BookingSlots({
   console.log('BookingSlots: Resources:', resources);
   console.log('BookingSlots: Rooms:', rooms);
   console.log('BookingSlots: Doctors:', doctors);
+  
+  // Debug function to log appointment data structure
+  useEffect(() => {
+    if (appointments && appointments.length > 0) {
+      console.log('BookingSlots: Sample appointment structure:', appointments[0]);
+      console.log('BookingSlots: All appointment resources:', [...new Set(appointments.map(a => a.resource).filter(Boolean))]);
+      console.log('BookingSlots: All appointment dates:', [...new Set(appointments.map(a => a.appointment_date || a.appointmentDate || a.date || a.scheduled_date).filter(Boolean))]);
+    }
+  }, [appointments]);
   // Only show appointments for the selected currentDate if appointment objects carry a date field
   const dayStr = useMemo(() => {
     const yyyy = currentDate.getFullYear();
     const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
     const dd = String(currentDate.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+    const formattedDate = `${yyyy}-${mm}-${dd}`;
+    console.log('BookingSlots: Current date formatted as:', formattedDate, 'from:', currentDate);
+    return formattedDate;
   }, [currentDate]);
 
   const appointmentsForGrid = useMemo(() => {
     console.log('BookingSlots: Filtering appointments for date:', dayStr);
     console.log('BookingSlots: All appointments:', appointments);
     
+    // Validate appointments array
+    if (!Array.isArray(appointments)) {
+      console.log('BookingSlots: Appointments is not an array:', appointments);
+      return [];
+    }
+    
     const filtered = (appointments || []).filter((a) => {
-      const apptDate = a.appointment_date || a.appointmentDate || null;
-      if (!apptDate) {
-        console.log('BookingSlots: Appointment has no date, including:', a);
-        return true; // local-only items are saved per-day upstream
+      // Validate appointment object
+      if (!a || typeof a !== 'object') {
+        console.log('BookingSlots: Invalid appointment object:', a);
+        return false;
       }
-      const matches = apptDate === dayStr;
-      console.log('BookingSlots: Appointment date check:', { apptDate, dayStr, matches, appointment: a });
+      // Check for appointment date in various possible fields
+      const apptDate = a.appointment_date || a.appointmentDate || a.date || a.scheduled_date || null;
+      
+      if (!apptDate) {
+        console.log('BookingSlots: Appointment has no date, skipping:', a);
+        return false; // Skip appointments without dates to prevent showing on all dates
+      }
+      
+      // Normalize the date format for comparison
+      let normalizedApptDate;
+      try {
+        if (typeof apptDate === 'string') {
+          // Handle ISO date strings or date strings
+          const date = new Date(apptDate);
+          if (isNaN(date.getTime())) {
+            console.log('BookingSlots: Invalid date format, skipping:', apptDate);
+            return false;
+          }
+          const yyyy = date.getFullYear();
+          const mm = String(date.getMonth() + 1).padStart(2, '0');
+          const dd = String(date.getDate()).padStart(2, '0');
+          normalizedApptDate = `${yyyy}-${mm}-${dd}`;
+        } else if (apptDate instanceof Date) {
+          const yyyy = apptDate.getFullYear();
+          const mm = String(apptDate.getMonth() + 1).padStart(2, '0');
+          const dd = String(apptDate.getDate()).padStart(2, '0');
+          normalizedApptDate = `${yyyy}-${mm}-${dd}`;
+        } else {
+          console.log('BookingSlots: Unsupported date type, skipping:', typeof apptDate);
+          return false;
+        }
+      } catch (error) {
+        console.log('BookingSlots: Error parsing date, skipping:', apptDate, error);
+        return false;
+      }
+      
+      const matches = normalizedApptDate === dayStr;
+      console.log('BookingSlots: Appointment date check:', { 
+        originalDate: apptDate, 
+        normalizedDate: normalizedApptDate, 
+        dayStr, 
+        matches, 
+        appointment: a 
+      });
+      
       return matches;
     });
     
-    console.log('BookingSlots: Filtered appointments:', filtered);
+    console.log('BookingSlots: Filtered appointments for date', dayStr, ':', filtered);
     return filtered;
   }, [appointments, dayStr]);
 
   const getResourceAppointments = (resource) => {
-    const resourceAppts = appointmentsForGrid.filter((a) => a.resource === resource);
-    console.log('BookingSlots: Appointments for resource', resource, ':', resourceAppts);
-    
-    // If no appointments found for this resource, check if there are any appointments that could be assigned here
-    if (resourceAppts.length === 0 && appointmentsForGrid.length > 0) {
-      console.log('BookingSlots: No appointments for resource', resource, 'but there are', appointmentsForGrid.length, 'total appointments');
-      // For debugging, let's show all appointments on the first resource
-      if (resources.indexOf(resource) === 0) {
-        console.log('BookingSlots: Showing all appointments on first resource for debugging');
-        return appointmentsForGrid;
+    const resourceAppts = appointmentsForGrid.filter((a) => {
+      // Ensure appointment has a valid resource and it matches the current resource
+      if (!a.resource || typeof a.resource !== 'string') {
+        console.log('BookingSlots: Appointment missing or invalid resource:', a);
+        return false;
       }
-    }
+      return a.resource === resource;
+    });
     
+    console.log('BookingSlots: Appointments for resource', resource, ':', resourceAppts);
     return resourceAppts;
   };
 

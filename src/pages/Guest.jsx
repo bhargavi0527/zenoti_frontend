@@ -627,7 +627,7 @@ export default function GuestLanding() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
-            </div>
+      </div>
           </div>
         )}
 
@@ -771,13 +771,15 @@ export default function GuestLanding() {
                   <h3 className="text-lg font-semibold text-blue-900">Guest Found</h3>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => navigate(`/guests/${encodeURIComponent(searchedGuest.guest_code)}`)}
+                      onClick={() => navigate(`/guest-profile/${encodeURIComponent(searchedGuest.guest_code)}`, { 
+                        state: { guestFallback: searchedGuest } 
+                      })}
                       className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
                     >
                       View Full Profile
                     </button>
                     <button
-                      onClick={() => navigate(`/guests/${encodeURIComponent(searchedGuest.guest_code)}/edit`)}
+                      onClick={() => openEditGuestModal(searchedGuest)}
                       className="px-3 py-1 border border-blue-600 text-blue-600 text-sm rounded hover:bg-blue-50 transition-colors"
                     >
                       Edit Guest
