@@ -55,6 +55,17 @@ export default function PointOfSale() {
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [selectedPackage, setSelectedPackage] = useState('');
   const [packagePrice, setPackagePrice] = useState('');
+  // Payment state
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [invoiceId, setInvoiceId] = useState('');
+  const [guestLoading, setGuestLoading] = useState(false);
+  const [guestFound, setGuestFound] = useState(false);
+  const [guestId, setGuestId] = useState('');
+  const [availableInvoices, setAvailableInvoices] = useState([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+
   const timeOptions = [
     '09:00 AM','09:15 AM','09:30 AM','09:45 AM',
     '10:00 AM','10:15 AM','10:30 AM','10:45 AM',
@@ -83,28 +94,289 @@ export default function PointOfSale() {
   const [loyaltyPoints, setLoyaltyPoints] = useState('');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [centerName, setCenterName] = useState('Corporate Training Center');
+
+  // Function to automatically update payment amount when package or service is selected
+  const updatePaymentAmount = () => {
+    let totalAmount = 0;
+    
+    // Add package amount if selected
+    if (selectedPackage && packagePrice) {
+      totalAmount += parseFloat(packagePrice) || 0;
+    }
+    
+    // Add service amount if selected
+    if (svcName && svcPrice && svcQty) {
+      totalAmount += (parseFloat(svcPrice) || 0) * svcQty;
+    }
+    
+    // Add prepaid card amount if selected
+    if (prepaidCardNumber && prepaidPrice) {
+      totalAmount += parseFloat(prepaidPrice) || 0;
+    }
+    
+    // Add gift card amount if selected
+    if (giftCardNumber && giftPrice) {
+      totalAmount += parseFloat(giftPrice) || 0;
+    }
+    
+    const newAmount = totalAmount.toFixed(2);
+    console.log('Auto-calculating payment amount:', {
+      selectedPackage,
+      packagePrice,
+      svcName,
+      svcPrice,
+      svcQty,
+      prepaidCardNumber,
+      prepaidPrice,
+      giftCardNumber,
+      giftPrice,
+      totalAmount: newAmount
+    });
+    setAmount(newAmount);
+  };
+
+  // Function to submit payment to API
+  const submitPayment = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      setPaymentError('Please enter a valid amount');
+      return;
+    }
+
+    if (!invoiceId) {
+      setPaymentError('Invoice ID is required');
+      return;
+    }
+
+    // Validate that invoice ID is a proper UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(invoiceId)) {
+      setPaymentError('Invalid invoice ID format. Please select a valid invoice from the dropdown.');
+      return;
+    }
+
+    // Validate that at least one item is selected
+    if (!selectedPackage && !svcName && !prepaidCardNumber && !giftCardNumber) {
+      setPaymentError('Please select at least one item (package, service, prepaid card, or gift card)');
+      return;
+    }
+
+    setPaymentLoading(true);
+    setPaymentError('');
+
+    try {
+      const paymentData = {
+        payment_method: paymentMethod.toUpperCase(),
+        amount: parseFloat(amount),
+        reference_no: `TXN${Date.now().toString(16).toUpperCase()}`,
+        remarks: `Payment for ${activeItemTab} - ${selectedPackage || svcName || 'item'}`,
+        invoice_id: invoiceId
+      };
+
+      const response = await fetch('http://127.0.0.1:8000/payments/', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(paymentData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Payment failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Payment successful:', result);
+      setPaymentSuccess(true);
+      setPaymentError('');
+      
+      // Reset form after successful payment
+      setTimeout(() => {
+        setPaymentSuccess(false);
+        setAmount('0.00');
+        setSelectedPackage('');
+        setPackagePrice('');
+        setSvcName('');
+        setSvcPrice('');
+        setSvcQty(1);
+        setPrepaidCardNumber('');
+        setPrepaidPrice('');
+        setGiftCardNumber('');
+        setGiftPrice('');
+        setActiveItemTab('package');
+        setPaymentMethod('cash');
+        setCheckNumber('');
+        setBankName('');
+        setCheckDate('');
+        setCardType('Debit Card');
+        setCardLast4('');
+        setTerminal('');
+        setReceiptNumber('');
+        setCardBankName('');
+        setCardExpiry('');
+        setPrepaidGiftCardNumber('');
+        setLoyaltyProgram('');
+        setLoyaltyAmount('0.00');
+        setLoyaltyPoints('');
+        setCustomPayment('');
+      }, 2000);
+
+    } catch (error) {
+      console.error('Payment submission failed:', error);
+      setPaymentError(error.message || 'Payment submission failed');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  // Function to clear all form data
+  const clearForm = () => {
+    setAmount('0.00');
+    setSelectedPackage('');
+    setPackagePrice('');
+    setSvcName('');
+    setSvcPrice('');
+    setSvcQty(1);
+    setPrepaidCardNumber('');
+    setPrepaidPrice('');
+    setGiftCardNumber('');
+    setGiftPrice('');
+    setActiveItemTab('package');
+    setPaymentMethod('cash');
+    setCheckNumber('');
+    setBankName('');
+    setCheckDate('');
+    setCardType('Debit Card');
+    setCardLast4('');
+    setTerminal('');
+    setReceiptNumber('');
+    setCardBankName('');
+    setCardExpiry('');
+    setPrepaidGiftCardNumber('');
+    setLoyaltyProgram('');
+    setLoyaltyAmount('0.00');
+    setLoyaltyPoints('');
+    setCustomPayment('');
+    setPaymentError('');
+    setPaymentSuccess(false);
+    
+    // Clear guest data
+    setGuestCode('');
+    setFirstName('');
+    setLastName('');
+    setEmail('');
+    setGender('');
+    setIsMinor(false);
+    setMobileCountry('+91');
+    setMobileNumber('');
+    setCenterName('Corporate Training Center');
+    setGuestFound(false);
+    setGuestId('');
+    setAvailableInvoices([]);
+    setInvoiceId('');
+  };
+
+  // Function to fetch invoices for a guest
+  const fetchGuestInvoices = async (guestId) => {
+    if (!guestId) return;
+    
+    setInvoicesLoading(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/invoices/guest/${guestId}/ids`, {
+        headers: { accept: 'application/json' }
+      });
+      
+      if (!res.ok) {
+        console.log('Failed to fetch invoices:', res.status);
+        return;
+      }
+      
+      const invoiceIds = await res.json();
+      console.log('Available invoices:', invoiceIds);
+      setAvailableInvoices(invoiceIds);
+      
+      // Set the first available invoice as default
+      if (invoiceIds.length > 0) {
+        setInvoiceId(invoiceIds[0]);
+      }
+      
+    } catch (error) {
+      console.error('Failed to fetch guest invoices:', error);
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
+
+  // Generate invoice ID on component mount (fallback)
+  useEffect(() => {
+    if (!guestId) {
+      const generateInvoiceId = () => {
+        const timestamp = Date.now().toString(16);
+        const random = Math.random().toString(16).substr(2, 8);
+        setInvoiceId(`${timestamp}-${random}`);
+      };
+      generateInvoiceId();
+    }
+  }, [guestId]);
+
+  // Update payment amount whenever relevant fields change
+  useEffect(() => {
+    updatePaymentAmount();
+  }, [selectedPackage, packagePrice, svcName, svcPrice, svcQty, prepaidCardNumber, prepaidPrice, giftCardNumber, giftPrice]);
+
   const fetchGuestByCode = async (code) => {
     const trimmed = (code || '').trim();
     if (!trimmed) return;
+    
+    setGuestLoading(true);
+    setGuestFound(false);
+    
     try {
-      const res = await fetch(`http://127.0.0.1:8000/guests/${encodeURIComponent(trimmed)}`, {
+      const res = await fetch(`http://127.0.0.1:8000/guests/code/${encodeURIComponent(trimmed)}`, {
         headers: { accept: 'application/json' }
       });
-      if (!res.ok) return;
+      
+      if (!res.ok) {
+        console.log('Guest not found or error:', res.status);
+        setGuestFound(false);
+        return;
+      }
+      
       const data = await res.json();
+      console.log('Guest data fetched:', data);
+      
       setCenterName(data?.center_name || '');
       setFirstName(data?.first_name || '');
       setLastName(data?.last_name || '');
       setEmail(data?.email || '');
       setGender(data?.gender || '');
       setIsMinor(Boolean(data?.is_minor));
+      
+      // Handle phone number parsing
       const cc = data?.home_no || '';
       const fullPhone = data?.phone_no || '';
       const local = cc && fullPhone.startsWith(cc) ? fullPhone.slice(cc.length) : fullPhone;
-      setMobileCountry(cc || '+');
+      setMobileCountry(cc || '+91');
       setMobileNumber(local || '');
+      
+      // Set guest code if not already set
+      if (data?.guest_code && !guestCode) {
+        setGuestCode(data.guest_code);
+      }
+      
+      // Set guest ID and fetch invoices
+      if (data?.id) {
+        setGuestId(data.id);
+        fetchGuestInvoices(data.id);
+      }
+      
+      setGuestFound(true);
+      
     } catch (err) {
       console.error('Failed to fetch guest by code', err);
+      setGuestFound(false);
+    } finally {
+      setGuestLoading(false);
     }
   };
 
@@ -172,7 +444,52 @@ export default function PointOfSale() {
          <div className="grid grid-cols-12 gap-2 items-center">
            <div className="col-span-2">
              <div className="text-xs text-gray-600 mb-1">Code</div>
-             <input className="w-full border rounded px-2 py-1 text-sm" value={guestCode} onChange={(e)=>setGuestCode(e.target.value)} onBlur={()=>fetchGuestByCode(guestCode)} onKeyDown={(e)=>{ if(e.key==='Enter'){ fetchGuestByCode(guestCode); } }} placeholder="Enter guest code" />
+             <div className="relative">
+               <input 
+                 className={`w-full border rounded px-2 py-1 text-sm pr-8 ${
+                   guestFound ? 'border-green-500 bg-green-50' : 
+                   guestLoading ? 'border-blue-500' : 
+                   'border-gray-300'
+                 }`} 
+                 value={guestCode} 
+                 onChange={(e)=>setGuestCode(e.target.value)} 
+                 onBlur={()=>fetchGuestByCode(guestCode)} 
+                 onKeyDown={(e)=>{ if(e.key==='Enter'){ fetchGuestByCode(guestCode); } }} 
+                 placeholder="Enter guest code" 
+               />
+               {guestLoading && (
+                 <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                   <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                 </div>
+               )}
+               {guestFound && (
+                 <div className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500">
+                   ✓
+                 </div>
+               )}
+             </div>
+                            {guestFound && (
+                 <button 
+                   onClick={() => {
+                     setGuestCode('');
+                     setFirstName('');
+                     setLastName('');
+                     setEmail('');
+                     setGender('');
+                     setIsMinor(false);
+                     setMobileCountry('+91');
+                     setMobileNumber('');
+                     setCenterName('Corporate Training Center');
+                     setGuestFound(false);
+                     setGuestId('');
+                     setAvailableInvoices([]);
+                     setInvoiceId('');
+                   }}
+                   className="mt-1 text-xs text-red-600 hover:text-red-800"
+                 >
+                   Clear Guest
+                 </button>
+               )}
            </div>
            <div className="col-span-3">
              <div className="text-xs text-gray-600 mb-1">Mobile</div>
@@ -214,6 +531,13 @@ export default function PointOfSale() {
              </select>
            </div>
          </div>
+         
+         {/* Guest found success message */}
+         {guestFound && (
+           <div className="mt-2 p-2 bg-green-100 border border-green-300 text-green-700 rounded text-sm">
+             ✓ Guest found: {firstName} {lastName} from {centerName}
+           </div>
+         )}
        </div>
      </div>
 
@@ -231,6 +555,9 @@ export default function PointOfSale() {
               
             </div>
             <div className="mt-6 space-y-4">
+              <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                💡 <strong>Tip:</strong> When you select packages, services, or cards, the payment amount will be automatically calculated and filled in the payment section.
+              </div>
               <div>
                 <div className="text-sm text-gray-700 mb-1">Packages</div>
                 <div className="flex gap-2 items-center">
@@ -535,6 +862,78 @@ export default function PointOfSale() {
           {/* Right: Collect payment */}
           <div className="col-span-6 border rounded-md p-3">
             <div className="text-sm font-medium text-gray-800 mb-2">Collect Payment</div>
+            
+            {/* Invoice ID display */}
+            <div className="mb-3 p-2 bg-gray-50 rounded text-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-medium">Invoice ID:</span> {invoiceId}
+                </div>
+                {availableInvoices.length > 0 && (
+                  <select 
+                    value={invoiceId} 
+                    onChange={(e) => setInvoiceId(e.target.value)}
+                    className="text-xs border rounded px-2 py-1"
+                  >
+                    {availableInvoices.map((invId) => (
+                      <option key={invId} value={invId}>
+                        {invId}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {invoicesLoading && (
+                <div className="text-xs text-blue-600 mt-1">Loading invoices...</div>
+              )}
+              {availableInvoices.length === 0 && guestFound && !invoicesLoading && (
+                <div className="text-xs text-orange-600 mt-1">No invoices found for this guest</div>
+              )}
+              <div className="text-xs text-gray-600 mt-1">
+                💡 Select an invoice from the dropdown above to proceed with payment
+              </div>
+            </div>
+
+            {/* Selected items summary */}
+            {(selectedPackage || svcName || prepaidCardNumber || giftCardNumber) && (
+              <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                <div className="font-medium text-blue-800 mb-1">Selected Items:</div>
+                <div className="space-y-1 text-blue-700">
+                  {selectedPackage && (
+                    <div>• Package: {selectedPackage} - ₹{packagePrice}</div>
+                  )}
+                  {svcName && (
+                    <div>• Service: {svcName} (Qty: {svcQty}) - ₹{svcPrice}</div>
+                  )}
+                  {prepaidCardNumber && (
+                    <div>• Prepaid Card: {prepaidCardNumber} - ₹{prepaidPrice}</div>
+                  )}
+                  {giftCardNumber && (
+                    <div>• Gift Card: {giftCardNumber} - ₹{giftPrice}</div>
+                  )}
+                  <div className="font-medium text-blue-800 mt-2">Total: ₹{amount}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Invoice warning */}
+            {guestFound && availableInvoices.length === 0 && !invoicesLoading && (
+              <div className="mb-3 p-2 bg-yellow-50 border border-yellow-300 text-yellow-700 rounded text-sm">
+                ⚠️ No invoices found for this guest. Please ensure the guest has active invoices before proceeding with payment.
+              </div>
+            )}
+
+            {/* Payment status messages */}
+            {paymentSuccess && (
+              <div className="mb-3 p-2 bg-green-100 border border-green-300 text-green-700 rounded text-sm">
+                Payment submitted successfully!
+              </div>
+            )}
+            {paymentError && (
+              <div className="mb-3 p-2 bg-red-100 border border-red-300 text-red-700 rounded text-sm">
+                {paymentError}
+              </div>
+            )}
             <div className="flex">
               <div className="w-40 border-r pr-3 space-y-2">
                 {['cash','credit','check','custom','gift','points'].map((m)=> (
@@ -559,6 +958,7 @@ export default function PointOfSale() {
                       <div className="col-span-3 text-sm text-gray-700">Amount</div>
                       <div className="col-span-5">
                         <input value={amount} onChange={(e)=>setAmount(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
+                        <div className="text-xs text-gray-500 mt-1">Auto-calculated from selected items</div>
                       </div>
                     </div>
                     <div className="grid grid-cols-12 gap-3 items-center mb-3">
@@ -593,6 +993,7 @@ export default function PointOfSale() {
                       <div className="col-span-3 text-sm text-gray-700">Amount</div>
                       <div className="col-span-5">
                         <input value={amount} onChange={(e)=>setAmount(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
+                        <div className="text-xs text-gray-500 mt-1">Auto-calculated from selected items</div>
                       </div>
                     </div>
                     <div className="grid grid-cols-12 gap-3 items-center mb-3">
@@ -638,6 +1039,7 @@ export default function PointOfSale() {
                       <div className="col-span-3 text-sm text-gray-700">Amount</div>
                       <div className="col-span-5">
                         <input value={amount} onChange={(e)=>setAmount(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
+                        <div className="text-xs text-gray-500 mt-1">Auto-calculated from selected items</div>
                       </div>
                     </div>
                     <div className="grid grid-cols-12 gap-3 items-center mb-3">
@@ -690,6 +1092,7 @@ export default function PointOfSale() {
                       <div className="col-span-3 text-sm text-gray-700">Amount</div>
                       <div className="col-span-5">
                         <input value={amount} onChange={(e)=>setAmount(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
+                        <div className="text-xs text-gray-500 mt-1">Auto-calculated from selected items</div>
                       </div>
                     </div>
                     <div className="grid grid-cols-12 gap-3 items-center mb-4">
@@ -730,8 +1133,24 @@ export default function PointOfSale() {
                   </>
                 )}
 
-                <button className="px-4 py-2 bg-blue-600 text-white rounded text-sm">Add Payment</button>
+                <button 
+                  onClick={submitPayment}
+                  disabled={paymentLoading}
+                  className={`px-4 py-2 rounded text-sm ${
+                    paymentLoading 
+                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {paymentLoading ? 'Processing...' : 'Add Payment'}
+                </button>
                 <div className="mt-3 flex gap-2">
+                  <button 
+                    onClick={clearForm}
+                    className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+                  >
+                    Clear Form
+                  </button>
                   <button className="h-8 w-8 border rounded">🖨</button>
                   <button className="h-8 w-8 border rounded">✉</button>
                 </div>
