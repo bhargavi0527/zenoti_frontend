@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-export default function GeneralTab({ guest }) {
+export default function GeneralTab({ guest, guestId }) {
   const [form, setForm] = useState({
     code: '',
     first_name: '',
@@ -47,9 +47,20 @@ export default function GeneralTab({ guest }) {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
+    console.log('GeneralTab: Guest data received:', guest);
+    // Try multiple possible fields for customer ID, including guestId from URL
+    const codeValue = guest?.guest_code || guest?.code || guest?.id || guest?.customer_id || guestId || '';
+    console.log('GeneralTab: Setting code value:', codeValue, 'from guest:', { 
+      guest_code: guest?.guest_code, 
+      code: guest?.code, 
+      id: guest?.id,
+      customer_id: guest?.customer_id,
+      guestId: guestId
+    });
+    
     setForm((f) => ({
       ...f,
-      code: guest?.guest_code || guest?.code || '',
+      code: codeValue,
       first_name: guest?.first_name || '',
       last_name: guest?.last_name || '',
       email: guest?.email || '',

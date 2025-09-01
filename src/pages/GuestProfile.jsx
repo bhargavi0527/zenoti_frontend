@@ -26,12 +26,14 @@ export default function GuestProfile() {
   const [error, setError] = useState(null);
   const [guest, setGuest] = useState(null);
   const [activeTab, setActiveTab] = useState('general');
+  const [appointmentData, setAppointmentData] = useState(null);
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
+        console.log('GuestProfile loading:', { guestId, locationState: location.state });
         if (!guestId) {
           setError('Missing guest id');
           setLoading(false);
@@ -52,6 +54,10 @@ export default function GuestProfile() {
           // Fallback to passed state if available
           if (location.state && location.state.guestFallback) {
             setGuest(location.state.guestFallback);
+            // Set appointment data if coming from appointment
+            if (location.state.appointmentData) {
+              setAppointmentData(location.state.appointmentData);
+            }
           } else {
             throw new Error(`HTTP ${res.status}`);
           }
@@ -63,6 +69,10 @@ export default function GuestProfile() {
         console.error('Failed to load guest', e);
         if (location.state && location.state.guestFallback) {
           setGuest(location.state.guestFallback);
+          // Set appointment data if coming from appointment
+          if (location.state.appointmentData) {
+            setAppointmentData(location.state.appointmentData);
+          }
           setError(null);
         } else {
           setError('Failed to load guest');
@@ -73,6 +83,13 @@ export default function GuestProfile() {
     };
     load();
   }, [guestId, location.state]);
+
+  // Auto-switch to payments tab if coming from appointment
+  useEffect(() => {
+    if (location.state && location.state.fromAppointment && appointmentData) {
+      setActiveTab('payments');
+    }
+  }, [location.state, appointmentData]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -103,7 +120,7 @@ export default function GuestProfile() {
             </div>
             <Tabs
               tabs={[
-                { key: 'general', label: 'General', content: <GeneralTab guest={guest} /> },
+                { key: 'general', label: 'General', content: <GeneralTab guest={guest} guestId={guestId} /> },
                 { key: 'notes', label: 'Notes', content: <NotesTab guestId={guestId} /> },
                 { key: 'appointments', label: 'Appointments', content: <AppointmentsTab guestId={guestId} /> },
                 { key: 'products', label: 'Products', content: <ProductsTab guestId={guestId} /> },
@@ -114,7 +131,7 @@ export default function GuestProfile() {
                 { key: 'issues', label: 'Issues', content: <IssuesTab guestId={guestId} /> },
                 { key: 'points', label: 'Points', content: <PointsTab guestId={guestId} /> },
                 { key: 'open', label: 'Open', content: <OpenTab /> },
-                { key: 'payments', label: 'Payments', content: <PaymentsTab guestId={guestId} /> },
+                { key: 'payments', label: 'Payments', content: <PaymentsTab guestId={guestId} appointmentData={appointmentData} /> },
                 { key: 'notifications', label: 'Notifications', content: <NotificationsTab guestId={guestId} /> },
                 { key: 'forms', label: 'Forms Unified View', content: <FormsUnifiedViewTab /> },
                 { key: 'gallery', label: 'Gallery', content: <GalleryTab /> },

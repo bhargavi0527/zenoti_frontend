@@ -711,7 +711,7 @@ export default function BookingSlots({
                           email: a.guestEmail || '',
                           gender: a.guestGender || '',
                         };
-                        if (guestCode) navigate(`/guests/${encodeURIComponent(guestCode)}`, { state: { guestFallback: fallback } });
+                        if (guestCode) navigate(`/guest-profile/${encodeURIComponent(guestCode)}`, { state: { guestFallback: fallback } });
                       }}
                     >D</button>
                     <div className="flex-1">
@@ -755,7 +755,53 @@ export default function BookingSlots({
                     <div className="mb-1 text-gray-700">{startLabel} - {endLabel}{a.doctor ? `  |  ${a.doctor}` : ''}</div>
                     <div className="mb-3 text-gray-500">{a.resource}</div>
                     <div className="mt-3 flex items-center gap-2">
-                      <button className="px-3 py-2 bg-blue-600 text-white rounded" onClick={() => { setApptMenu({ open: false, x: 0, y: 0, appt: null }); }}>Take payment</button>
+                      <button 
+                        className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700" 
+                        onClick={() => { 
+                          // Navigate to guest profile with appointment data
+                          const guestCode = (a.guestCode || a.guestId || a.guest_backend_id || '').toString() || (a.guestPhone || '').toString();
+                          const fallback = {
+                            first_name: a.guestFirstName || '',
+                            last_name: a.guestLastName || '',
+                            phone_no: a.guestPhone || '',
+                            email: a.guestEmail || '',
+                            gender: a.guestGender || '',
+                            guest_code: guestCode,
+                          };
+                          
+                          console.log('Take payment clicked:', {
+                            guestCode,
+                            fallback,
+                            appointmentData: a,
+                            navigationPath: guestCode ? `/guest-profile/${encodeURIComponent(guestCode)}` : `/guest-profile/new`
+                          });
+                          
+                          // Close the appointment menu first
+                          setApptMenu({ open: false, x: 0, y: 0, appt: null });
+                          
+                          // Navigate to guest profile
+                          if (guestCode) {
+                            navigate(`/guest-profile/${encodeURIComponent(guestCode)}`, { 
+                              state: { 
+                                guestFallback: fallback,
+                                appointmentData: a,
+                                fromAppointment: true
+                              } 
+                            });
+                          } else {
+                            // If no guest code, still navigate with fallback data
+                            navigate(`/guest-profile/new`, { 
+                              state: { 
+                                guestFallback: fallback,
+                                appointmentData: a,
+                                fromAppointment: true
+                              } 
+                            });
+                          }
+                        }}
+                      >
+                        Take payment
+                      </button>
                     </div>
                   </div>
                   {/* Footer quick actions */}

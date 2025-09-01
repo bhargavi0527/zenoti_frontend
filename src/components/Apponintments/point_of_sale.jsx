@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import NewGuestModal from './new_guest_modal';
+// ProductSalesTab is defined in this file below
 
 
 export default function PointOfSale() {
   const [gender, setGender] = useState('');
   const [source, setSource] = useState('');
   const [amount, setAmount] = useState('0.00');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('custom');
   const [customPayment, setCustomPayment] = useState('');
   const [activeItemTab, setActiveItemTab] = useState('package');
   const [saleBy, setSaleBy] = useState('Koyyana Sai Mythree');
@@ -94,6 +95,13 @@ export default function PointOfSale() {
   const [loyaltyPoints, setLoyaltyPoints] = useState('');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [centerName, setCenterName] = useState('Corporate Training Center');
+  // Payment screen state
+  const [showPaymentScreen, setShowPaymentScreen] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [outstandingBalance, setOutstandingBalance] = useState(172671.50);
+  const [currentPayment, setCurrentPayment] = useState(null);
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [printLoading, setPrintLoading] = useState(false);
 
   // Function to automatically update payment amount when package or service is selected
   const updatePaymentAmount = () => {
@@ -142,21 +150,44 @@ export default function PointOfSale() {
       return;
     }
 
+    // Validate that at least one item is selected
+    if (!selectedPackage && !svcName && !prepaidCardNumber && !giftCardNumber) {
+      setPaymentError('Please select at least one item (package, service, prepaid card, or gift card)');
+      return;
+    }
+
+    // If no invoice ID, try to get or create one
+    if (!invoiceId && guestId) {
+      setPaymentError('Creating invoice for guest...');
+      setPaymentLoading(true);
+      try {
+        await getOrCreateInvoice(guestId);
+        // Wait a moment for the invoice to be set
+        setTimeout(() => {
+          if (invoiceId) {
+            submitPayment();
+          } else {
+            setPaymentError('Failed to create invoice. Please try again.');
+            setPaymentLoading(false);
+          }
+        }, 1000);
+        return;
+      } catch (error) {
+        setPaymentError('Failed to create invoice for guest');
+        setPaymentLoading(false);
+        return;
+      }
+    }
+
     if (!invoiceId) {
-      setPaymentError('Invoice ID is required');
+      setPaymentError('Invoice ID is required. Please ensure guest is selected.');
       return;
     }
 
     // Validate that invoice ID is a proper UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(invoiceId)) {
-      setPaymentError('Invalid invoice ID format. Please select a valid invoice from the dropdown.');
-      return;
-    }
-
-    // Validate that at least one item is selected
-    if (!selectedPackage && !svcName && !prepaidCardNumber && !giftCardNumber) {
-      setPaymentError('Please select at least one item (package, service, prepaid card, or gift card)');
+      setPaymentError('Invalid invoice ID format. Please try again.');
       return;
     }
 
@@ -190,6 +221,42 @@ export default function PointOfSale() {
       setPaymentSuccess(true);
       setPaymentError('');
       
+      // Store current payment details and show payment screen
+      const paymentDetails = {
+        id: result.id || `TXN${Date.now()}`,
+        amount: parseFloat(amount),
+        method: paymentMethod,
+        date: new Date().toLocaleString('en-IN', {
+          day: '2-digit',
+          month: '2-digit', 
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        }),
+        invoiceId: invoiceId,
+        invoiceNumber: invoiceNumber,
+        items: {
+          package: selectedPackage,
+          service: svcName,
+          prepaid: prepaidCardNumber,
+          gift: giftCardNumber
+        },
+        guest: {
+          name: `${firstName} ${lastName}`,
+          email: email,
+          phone: `${mobileCountry} ${mobileNumber}`
+        }
+      };
+      
+      setCurrentPayment(paymentDetails);
+      
+      // Add to payment history
+      setPaymentHistory(prev => [paymentDetails, ...prev]);
+      
+      // Show payment screen
+      setShowPaymentScreen(true);
+      
       // Reset form after successful payment
       setTimeout(() => {
         setPaymentSuccess(false);
@@ -204,7 +271,7 @@ export default function PointOfSale() {
         setGiftCardNumber('');
         setGiftPrice('');
         setActiveItemTab('package');
-        setPaymentMethod('cash');
+        setPaymentMethod('custom');
         setCheckNumber('');
         setBankName('');
         setCheckDate('');
@@ -242,7 +309,7 @@ export default function PointOfSale() {
     setGiftCardNumber('');
     setGiftPrice('');
     setActiveItemTab('package');
-    setPaymentMethod('cash');
+    setPaymentMethod('custom');
     setCheckNumber('');
     setBankName('');
     setCheckDate('');
@@ -274,9 +341,77 @@ export default function PointOfSale() {
     setGuestId('');
     setAvailableInvoices([]);
     setInvoiceId('');
+    setInvoiceNumber('');
   };
 
-  // Function to fetch invoices for a guest
+  // Function to get or create invoice for a guest
+  const getOrCreateInvoice = async (guestId) => {
+    if (!guestId) return;
+    
+    setInvoicesLoading(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/invoices/get-or-create/${guestId}`, {
+        method: 'POST',
+        headers: { 
+          accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      });
+      
+      if (!res.ok) {
+        console.log('Failed to get or create invoice:', res.status);
+        setPaymentError('Failed to create invoice for guest');
+        return;
+      }
+      
+      const result = await res.json();
+      console.log('Invoice result:', result);
+      
+      if (result.invoice_id) {
+        setInvoiceId(result.invoice_id);
+        setAvailableInvoices([result.invoice_id]);
+        // Set invoice number if available
+        if (result.invoice_no) {
+          setInvoiceNumber(result.invoice_no);
+        }
+        console.log('Invoice ready:', result.invoice_id, 'Invoice number:', result.invoice_no);
+      } else {
+        setPaymentError('No invoice ID returned from server');
+      }
+      
+    } catch (error) {
+      console.error('Failed to get or create invoice:', error);
+      setPaymentError('Failed to create invoice for guest');
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
+
+  // Function to fetch invoice details by ID
+  const fetchInvoiceDetails = async (invoiceId) => {
+    if (!invoiceId) return;
+    
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/invoices/${invoiceId}`, {
+        headers: { accept: 'application/json' }
+      });
+      
+      if (res.ok) {
+        const invoiceData = await res.json();
+        console.log('Invoice details:', invoiceData);
+        if (invoiceData.invoice_no) {
+          setInvoiceNumber(invoiceData.invoice_no);
+        }
+      } else {
+        console.log('Failed to fetch invoice details:', res.status);
+      }
+    } catch (error) {
+      console.error('Failed to fetch invoice details:', error);
+    }
+  };
+
+  // Function to fetch invoices for a guest (fallback method)
   const fetchGuestInvoices = async (guestId) => {
     if (!guestId) return;
     
@@ -298,6 +433,8 @@ export default function PointOfSale() {
       // Set the first available invoice as default
       if (invoiceIds.length > 0) {
         setInvoiceId(invoiceIds[0]);
+        // Fetch invoice details to get invoice number
+        fetchInvoiceDetails(invoiceIds[0]);
       }
       
     } catch (error) {
@@ -323,6 +460,213 @@ export default function PointOfSale() {
   useEffect(() => {
     updatePaymentAmount();
   }, [selectedPackage, packagePrice, svcName, svcPrice, svcQty, prepaidCardNumber, prepaidPrice, giftCardNumber, giftPrice]);
+
+  // Fetch invoice details when invoice ID changes
+  useEffect(() => {
+    if (invoiceId && !invoiceNumber) {
+      fetchInvoiceDetails(invoiceId);
+    }
+  }, [invoiceId]);
+
+  // Function to print/download invoice
+  const printInvoice = async () => {
+    if (!invoiceId) {
+      setPaymentError('No invoice available to print');
+      return;
+    }
+
+    setPrintLoading(true);
+    try {
+      // Try different possible endpoints for invoice printing
+      const endpoints = [
+        `http://127.0.0.1:8000/invoices/${invoiceId}/download`,
+        `http://127.0.0.1:8000/invoices/${invoiceId}/pdf`,
+        `http://127.0.0.1:8000/invoices/${invoiceId}/print`,
+        `http://127.0.0.1:8000/invoices/print/${invoiceId}`,
+        `http://127.0.0.1:8000/invoices/${invoiceId}/export`
+      ];
+
+      let response = null;
+      let workingEndpoint = null;
+
+      // Try each endpoint until one works
+      for (const endpoint of endpoints) {
+        try {
+          console.log('Trying endpoint:', endpoint);
+          response = await fetch(endpoint, {
+            method: 'GET',
+            headers: {
+              'accept': 'application/pdf, application/json'
+            }
+          });
+
+          if (response.ok) {
+            workingEndpoint = endpoint;
+            break;
+          } else {
+            console.log(`Endpoint ${endpoint} failed with status:`, response.status);
+          }
+        } catch (err) {
+          console.log(`Endpoint ${endpoint} failed with error:`, err);
+        }
+      }
+
+      if (!response || !response.ok) {
+        // If no endpoint works, try to get invoice details and create a simple PDF
+        console.log('No print endpoint found, creating simple invoice display');
+        createSimpleInvoicePDF();
+        return;
+      }
+
+      // Check if response is JSON (error) or PDF
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const errorData = await response.json();
+        console.log('API returned JSON error:', errorData);
+        throw new Error(errorData.detail || 'Failed to generate invoice');
+      }
+
+      // Get the PDF blob
+      const blob = await response.blob();
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Set filename with invoice number or ID
+      const filename = invoiceNumber ? `Invoice_${invoiceNumber}.pdf` : `Invoice_${invoiceId}.pdf`;
+      link.download = filename;
+      
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      console.log('Invoice downloaded successfully from:', workingEndpoint);
+      
+    } catch (error) {
+      console.error('Failed to print invoice:', error);
+      setPaymentError(`Failed to download invoice: ${error.message}`);
+    } finally {
+      setPrintLoading(false);
+    }
+  };
+
+  // Fallback function to create a simple invoice PDF
+  const createSimpleInvoicePDF = () => {
+    try {
+      // Create a simple HTML invoice
+      const invoiceHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Invoice ${invoiceNumber || invoiceId}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .invoice-details { margin-bottom: 20px; }
+            .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            .items-table th { background-color: #f2f2f2; }
+            .total { text-align: right; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>INVOICE</h1>
+            <h2>${centerName}</h2>
+          </div>
+          
+          <div class="invoice-details">
+            <p><strong>Invoice No:</strong> ${invoiceNumber || invoiceId}</p>
+            <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            <p><strong>Guest:</strong> ${firstName} ${lastName}</p>
+            <p><strong>Email:</strong> ${email}</p>
+            <p><strong>Phone:</strong> ${mobileCountry} ${mobileNumber}</p>
+          </div>
+          
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${selectedPackage ? `
+                <tr>
+                  <td>${selectedPackage}</td>
+                  <td>1</td>
+                  <td>₹${packagePrice}</td>
+                  <td>₹${packagePrice}</td>
+                </tr>
+              ` : ''}
+              ${svcName ? `
+                <tr>
+                  <td>${svcName}</td>
+                  <td>${svcQty}</td>
+                  <td>₹${svcPrice}</td>
+                  <td>₹${(parseFloat(svcPrice) * svcQty).toFixed(2)}</td>
+                </tr>
+              ` : ''}
+              ${prepaidCardNumber ? `
+                <tr>
+                  <td>Prepaid Card: ${prepaidCardNumber}</td>
+                  <td>1</td>
+                  <td>₹${prepaidPrice}</td>
+                  <td>₹${prepaidPrice}</td>
+                </tr>
+              ` : ''}
+              ${giftCardNumber ? `
+                <tr>
+                  <td>Gift Card: ${giftCardNumber}</td>
+                  <td>1</td>
+                  <td>₹${giftPrice}</td>
+                  <td>₹${giftPrice}</td>
+                </tr>
+              ` : ''}
+            </tbody>
+          </table>
+          
+          <div class="total">
+            <p><strong>Total Amount: ₹${amount}</strong></p>
+          </div>
+          
+          <div style="margin-top: 30px;">
+            <p><strong>Payment Method:</strong> ${paymentMethod.toUpperCase()}</p>
+            <p><strong>Sale By:</strong> ${saleBy}</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      // Open in new window for printing
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(invoiceHTML);
+      printWindow.document.close();
+      printWindow.focus();
+      
+      // Wait for content to load then print
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+
+      console.log('Simple invoice opened for printing');
+      
+    } catch (error) {
+      console.error('Failed to create simple invoice:', error);
+      setPaymentError('Failed to generate invoice. Please try again.');
+    } finally {
+      setPrintLoading(false);
+    }
+  };
 
   const fetchGuestByCode = async (code) => {
     const trimmed = (code || '').trim();
@@ -364,10 +708,10 @@ export default function PointOfSale() {
         setGuestCode(data.guest_code);
       }
       
-      // Set guest ID and fetch invoices
+      // Set guest ID and get or create invoice
       if (data?.id) {
         setGuestId(data.id);
-        fetchGuestInvoices(data.id);
+        getOrCreateInvoice(data.id);
       }
       
       setGuestFound(true);
@@ -484,6 +828,7 @@ export default function PointOfSale() {
                      setGuestId('');
                      setAvailableInvoices([]);
                      setInvoiceId('');
+                     setInvoiceNumber('');
                    }}
                    className="mt-1 text-xs text-red-600 hover:text-red-800"
                  >
@@ -624,7 +969,8 @@ export default function PointOfSale() {
                   { key: 'membership', label: 'Membership' },
                   { key: 'prepaid', label: 'Prepaid Card' },
                   { key: 'gift', label: 'Gift Card' },
-                  { key: 'service', label: 'Service' }
+                  { key: 'service', label: 'Service' },
+                  { key: 'product', label: 'Products' }, // <-- Add Products tab
                 ].map((t) => (
                   <button
                     key={t.key}
@@ -836,6 +1182,9 @@ export default function PointOfSale() {
                     </div>
                   </div>
                 )}
+                {activeItemTab === 'product' && (
+                  <ProductSalesTab />
+                )}
 
                 {/* Footer bar: Sale by + Add */}
                 <div className="mt-6 -mx-4 border-t">
@@ -867,9 +1216,9 @@ export default function PointOfSale() {
             <div className="mb-3 p-2 bg-gray-50 rounded text-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="font-medium">Invoice ID:</span> {invoiceId}
+                  <span className="font-medium">Invoice No:</span> {invoiceNumber || invoiceId || 'Not created yet'}
                 </div>
-                {availableInvoices.length > 0 && (
+                {availableInvoices.length > 1 && (
                   <select 
                     value={invoiceId} 
                     onChange={(e) => setInvoiceId(e.target.value)}
@@ -884,13 +1233,16 @@ export default function PointOfSale() {
                 )}
               </div>
               {invoicesLoading && (
-                <div className="text-xs text-blue-600 mt-1">Loading invoices...</div>
+                <div className="text-xs text-blue-600 mt-1">Creating/getting invoice...</div>
               )}
-              {availableInvoices.length === 0 && guestFound && !invoicesLoading && (
-                <div className="text-xs text-orange-600 mt-1">No invoices found for this guest</div>
+              {invoiceId && !invoicesLoading && (
+                <div className="text-xs text-green-600 mt-1">✓ Invoice ready for payment</div>
+              )}
+              {!invoiceId && guestFound && !invoicesLoading && (
+                <div className="text-xs text-orange-600 mt-1">Invoice will be created automatically when you make payment</div>
               )}
               <div className="text-xs text-gray-600 mt-1">
-                💡 Select an invoice from the dropdown above to proceed with payment
+                💡 Invoice will be automatically created if guest doesn't have one
               </div>
             </div>
 
@@ -917,9 +1269,9 @@ export default function PointOfSale() {
             )}
 
             {/* Invoice warning */}
-            {guestFound && availableInvoices.length === 0 && !invoicesLoading && (
-              <div className="mb-3 p-2 bg-yellow-50 border border-yellow-300 text-yellow-700 rounded text-sm">
-                ⚠️ No invoices found for this guest. Please ensure the guest has active invoices before proceeding with payment.
+            {guestFound && !invoiceId && !invoicesLoading && (
+              <div className="mb-3 p-2 bg-blue-50 border border-blue-300 text-blue-700 rounded text-sm">
+                ℹ️ No invoice found for this guest. An invoice will be created automatically when you process payment.
               </div>
             )}
 
@@ -1151,7 +1503,18 @@ export default function PointOfSale() {
                   >
                     Clear Form
                   </button>
-                  <button className="h-8 w-8 border rounded">🖨</button>
+                  <button 
+                    onClick={printInvoice}
+                    disabled={printLoading || !invoiceId}
+                    className={`h-8 w-8 border rounded ${
+                      printLoading || !invoiceId 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                        : 'hover:bg-gray-50'
+                    }`}
+                    title={printLoading ? 'Downloading...' : 'Print Invoice'}
+                  >
+                    {printLoading ? '⏳' : '🖨'}
+                  </button>
                   <button className="h-8 w-8 border rounded">✉</button>
                 </div>
               </div>
@@ -1229,7 +1592,460 @@ export default function PointOfSale() {
       }}
       selectedCenter={null}
     />
+
+    {/* Payment Screen Modal */}
+    {showPaymentScreen && currentPayment && (
+      <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+          {/* Header */}
+          <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Payment Confirmation</h2>
+            <button 
+              onClick={() => setShowPaymentScreen(false)}
+              className="text-white hover:text-gray-200 text-2xl"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Tax Receipt Banner */}
+          <div className="bg-blue-50 border-b border-blue-200 px-6 py-3">
+            <div className="text-sm text-blue-800">
+              <strong>Tax receipt voucher no./Advance receipt no.</strong> has been generated for this bill. 
+              Redemption from an instrument sold before July 1, 2017 will not generate GST sequences for the bill.
+            </div>
+          </div>
+
+          <div className="flex h-[calc(90vh-120px)]">
+            {/* Left Panel - Invoice Details */}
+            <div className="w-1/2 p-6 border-r">
+              <div className="mb-4">
+                <div className="text-sm text-gray-600 mb-1">Center Name: {centerName}</div>
+                <div className="text-lg font-semibold">Invoice No {currentPayment.invoiceNumber || currentPayment.invoiceId || currentPayment.id}</div>
+                <div className="text-sm text-gray-600">
+                  | {currentPayment.guest.name} | {currentPayment.guest.email} | {currentPayment.guest.phone}
+                </div>
+              </div>
+
+              {/* Item Details Table */}
+              <div className="mb-6">
+                <div className="grid grid-cols-12 gap-2 text-sm font-medium border-b pb-2 mb-2">
+                  <div className="col-span-4">Item</div>
+                  <div className="col-span-2">Qty</div>
+                  <div className="col-span-2">Price</div>
+                  <div className="col-span-2">Discount</div>
+                  <div className="col-span-2">Final Price</div>
+                </div>
+                
+                {/* Display selected items */}
+                {currentPayment.items.package && (
+                  <div className="grid grid-cols-12 gap-2 text-sm py-2 border-b">
+                    <div className="col-span-4">{currentPayment.items.package}</div>
+                    <div className="col-span-2">1</div>
+                    <div className="col-span-2">₹{packagePrice}</div>
+                    <div className="col-span-2">0.00</div>
+                    <div className="col-span-2">₹{packagePrice}</div>
+                  </div>
+                )}
+                
+                {currentPayment.items.service && (
+                  <div className="grid grid-cols-12 gap-2 text-sm py-2 border-b">
+                    <div className="col-span-4">{currentPayment.items.service}</div>
+                    <div className="col-span-2">{svcQty}</div>
+                    <div className="col-span-2">₹{svcPrice}</div>
+                    <div className="col-span-2">0.00</div>
+                    <div className="col-span-2">₹{(parseFloat(svcPrice) * svcQty).toFixed(2)}</div>
+                  </div>
+                )}
+
+                {currentPayment.items.prepaid && (
+                  <div className="grid grid-cols-12 gap-2 text-sm py-2 border-b">
+                    <div className="col-span-4">Prepaid Card: {currentPayment.items.prepaid}</div>
+                    <div className="col-span-2">1</div>
+                    <div className="col-span-2">₹{prepaidPrice}</div>
+                    <div className="col-span-2">0.00</div>
+                    <div className="col-span-2">₹{prepaidPrice}</div>
+                  </div>
+                )}
+
+                {currentPayment.items.gift && (
+                  <div className="grid grid-cols-12 gap-2 text-sm py-2 border-b">
+                    <div className="col-span-4">Gift Card: {currentPayment.items.gift}</div>
+                    <div className="col-span-2">1</div>
+                    <div className="col-span-2">₹{giftPrice}</div>
+                    <div className="col-span-2">0.00</div>
+                    <div className="col-span-2">₹{giftPrice}</div>
+                  </div>
+                )}
+
+                {/* Summary */}
+                <div className="mt-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Net Price:</span>
+                    <span>₹{currentPayment.amount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>Tax:</span>
+                    <span>₹0.00</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold border-t pt-2">
+                    <span>Sum Total:</span>
+                    <span>₹{currentPayment.amount.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-sm text-gray-600">
+                Sale By: {saleBy}
+              </div>
+            </div>
+
+            {/* Right Panel - Payment Details */}
+            <div className="w-1/2 p-6">
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-4">Collect Payment</h3>
+                
+                {/* Payment Method List */}
+                <div className="flex mb-6">
+                  <div className="w-40 border-r pr-3 space-y-2">
+                    {['cash','credit','check','custom','gift','points'].map((m)=> (
+                      <button
+                        key={m}
+                        className={`w-full text-left px-3 py-2 rounded text-sm ${
+                          currentPayment.method === m 
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                            : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        {m === 'cash' && 'Cash'}
+                        {m === 'credit' && 'Credit/Debit'}
+                        {m === 'check' && 'Check'}
+                        {m === 'custom' && 'Custom'}
+                        {m === 'gift' && 'Prepaid/Gift'}
+                        {m === 'points' && 'Points'}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  <div className="flex-1 pl-4">
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-700">Amount:</span>
+                        <span className="text-sm">₹{currentPayment.amount.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-700">Change:</span>
+                        <span className="text-sm">₹0.00</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-700">Payment Data:</span>
+                        <span className="text-sm">{currentPayment.method.toUpperCase()}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6 space-y-2">
+                      <button className="w-full px-4 py-2 bg-blue-600 text-white rounded text-sm">
+                        Add Payment
+                      </button>
+                      <button 
+                        onClick={printInvoice}
+                        disabled={printLoading || !invoiceId}
+                        className={`w-full px-4 py-2 border border-gray-300 rounded text-sm ${
+                          printLoading || !invoiceId 
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                            : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        {printLoading ? 'Downloading...' : 'Print'}
+                      </button>
+                      <button className="w-full px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50">
+                        Close
+                      </button>
+                    </div>
+                    
+                    <button className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded text-sm font-medium">
+                      Close Invoice
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Outstanding Balance */}
+              <div className="mb-6 p-3 bg-gray-50 rounded">
+                <div className="flex justify-between items-center text-sm">
+                  <span>₹1,000.00 Outstanding:</span>
+                  <span className="font-semibold">₹{outstandingBalance.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                  <button className="text-blue-600 hover:text-blue-800 text-sm">Pay Now</button>
+                </div>
+                <div className="mt-2">
+                  <button className="text-blue-600 hover:text-blue-800 text-sm">View and send package agreement</button>
+                </div>
+              </div>
+
+              {/* Payment History */}
+              <div className="mb-6">
+                <h4 className="text-sm font-semibold mb-3">Payment History</h4>
+                <div className="border rounded">
+                  <div className="grid grid-cols-12 gap-2 text-xs font-medium border-b bg-gray-50 p-2">
+                    <div className="col-span-4">Type</div>
+                    <div className="col-span-3">Amount</div>
+                    <div className="col-span-5">Date</div>
+                  </div>
+                  {paymentHistory.map((payment, index) => (
+                    <div key={index} className="grid grid-cols-12 gap-2 text-xs p-2 border-b">
+                      <div className="col-span-4">
+                        {payment.method === 'custom' ? `Custom Name: ${customPayment || 'Card'}` : 
+                         payment.method === 'credit' ? 'Credit/Debit Card' : 
+                         payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}
+                      </div>
+                      <div className="col-span-3">₹{payment.amount.toFixed(2)}</div>
+                      <div className="col-span-5">{payment.date}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Tabs */}
+          <div className="border-t bg-gray-50 px-6 py-4">
+            <div className="flex space-x-6">
+              {['Package', 'Membership', 'Prepaid Card', 'Gift Card'].map((tab) => (
+                <button
+                  key={tab}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 ${
+                    tab === 'Package' 
+                      ? 'border-blue-600 text-blue-700' 
+                      : 'border-transparent text-gray-600 hover:text-blue-700'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            
+            <div className="mt-4 grid grid-cols-12 gap-4">
+              <div className="col-span-6">
+                <label className="block text-sm text-gray-700 mb-1">Package</label>
+                <input className="w-full border rounded px-3 py-2 text-sm" placeholder="Select package" />
+              </div>
+              <div className="col-span-6">
+                <label className="block text-sm text-gray-700 mb-1">Price</label>
+                <input className="w-full border rounded px-3 py-2 text-sm" placeholder="Enter price" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 
+}
+
+function ProductSalesTab() {
+  // Mock product data
+  const products = [
+    {
+      id: 'p1',
+      name: 'Vitamin C Serum',
+      price: 1200,
+      stock: 15,
+    },
+    {
+      id: 'p2',
+      name: 'Aloe Vera Gel',
+      price: 800,
+      stock: 30,
+    },
+    {
+      id: 'p3',
+      name: 'Sunscreen SPF 50',
+      price: 950,
+      stock: 20,
+    },
+    {
+      id: 'p4',
+      name: 'Hair Shampoo',
+      price: 450,
+      stock: 25,
+    },
+    {
+      id: 'p5',
+      name: 'Face Cream',
+      price: 750,
+      stock: 18,
+    },
+    {
+      id: 'p6',
+      name: 'Body Lotion',
+      price: 650,
+      stock: 22,
+    },
+  ];
+  
+  const [selectedProductId, setSelectedProductId] = React.useState('');
+  const [quantity, setQuantity] = React.useState(1);
+  const [customPrice, setCustomPrice] = React.useState('');
+  const [cart, setCart] = React.useState([]);
+
+  const selectedProduct = products.find(p => p.id === selectedProductId);
+
+  // Add product to cart
+  const addToCart = () => {
+    if (!selectedProduct || quantity < 1) return;
+    
+    const price = customPrice ? parseFloat(customPrice) : selectedProduct.price;
+    
+    setCart(prev => {
+      const existing = prev.find(item => item.id === selectedProduct.id);
+      if (existing) {
+        return prev.map(item => 
+          item.id === selectedProduct.id 
+            ? { ...item, quantity: item.quantity + quantity, price: price } 
+            : item
+        );
+      }
+      return [...prev, { ...selectedProduct, quantity, price }];
+    });
+    
+    setSelectedProductId('');
+    setQuantity(1);
+    setCustomPrice('');
+  };
+
+  // Remove product from cart
+  const removeFromCart = (id) => setCart(cart.filter(item => item.id !== id));
+
+  // Update cart quantity
+  const updateCartQuantity = (id, newQuantity) => {
+    if (newQuantity <= 0) {
+      removeFromCart(id);
+    } else {
+      setCart(cart.map(item => 
+        item.id === id ? { ...item, quantity: newQuantity } : item
+      ));
+    }
+  };
+
+  // Calculate total
+  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  return (
+    <div>
+      <div className="mb-4">
+        <div className="text-lg font-semibold text-blue-900 mb-4">Product Sales</div>
+        
+        {/* Product Selection */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Select Product</label>
+            <select
+              value={selectedProductId}
+              onChange={(e) => setSelectedProductId(e.target.value)}
+              className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Choose a product...</option>
+              {products.map(product => (
+                <option key={product.id} value={product.id}>
+                  {product.name} - ₹{product.price} (Stock: {product.stock})
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+            <input
+              type="number"
+              min="1"
+              max={selectedProduct?.stock || 0}
+              value={quantity}
+              onChange={(e) => setQuantity(Number(e.target.value) || 1)}
+              className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Custom Price (optional)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={customPrice}
+              onChange={(e) => setCustomPrice(e.target.value)}
+              placeholder={selectedProduct ? `Default: ₹${selectedProduct.price}` : ''}
+              className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        {/* Add to Cart Button */}
+        <div className="flex justify-end mb-6">
+          <button
+            onClick={addToCart}
+            disabled={!selectedProductId || quantity < 1}
+            className="px-6 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            Add to Cart
+          </button>
+        </div>
+      </div>
+
+      {/* Cart Summary */}
+      {cart.length > 0 && (
+        <div className="mt-6 border-t pt-4">
+          <div className="text-md font-semibold mb-3 text-gray-900">Selected Products</div>
+          <table className="min-w-full text-sm mb-4">
+            <thead>
+              <tr className="text-left text-gray-600 border-b">
+                <th className="px-2 py-2">Product</th>
+                <th className="px-2 py-2">Qty</th>
+                <th className="px-2 py-2">Price</th>
+                <th className="px-2 py-2">Total</th>
+                <th className="px-2 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cart.map(item => (
+                <tr key={item.id} className="border-b last:border-b-0">
+                  <td className="px-2 py-2">{item.name}</td>
+                  <td className="px-2 py-2">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
+                        className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 text-xs"
+                      >
+                        -
+                      </button>
+                      <span className="w-8 text-center">{item.quantity}</span>
+                      <button
+                        onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
+                        className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 text-xs"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2">₹{item.price}</td>
+                  <td className="px-2 py-2">₹{item.price * item.quantity}</td>
+                  <td className="px-2 py-2">
+                    <button 
+                      className="text-red-600 hover:underline text-xs" 
+                      onClick={() => removeFromCart(item.id)}
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="text-right font-semibold text-blue-900 text-lg border-t pt-2">
+            Total: ₹{total}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
