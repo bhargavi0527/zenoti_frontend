@@ -346,7 +346,7 @@ export default function PointOfSale() {
 
   // Function to get or create invoice for a guest
   const getOrCreateInvoice = async (guestId) => {
-    if (!guestId) return;
+    if (!guestId) return null;
     
     setInvoicesLoading(true);
     try {
@@ -376,6 +376,7 @@ export default function PointOfSale() {
           setInvoiceNumber(result.invoice_no);
         }
         console.log('Invoice ready:', result.invoice_id, 'Invoice number:', result.invoice_no);
+        return { invoiceId: result.invoice_id, invoiceNo: result.invoice_no };
       } else {
         setPaymentError('No invoice ID returned from server');
       }
@@ -386,6 +387,7 @@ export default function PointOfSale() {
     } finally {
       setInvoicesLoading(false);
     }
+    return null;
   };
 
   // Function to fetch invoice details by ID
@@ -444,17 +446,7 @@ export default function PointOfSale() {
     }
   };
 
-  // Generate invoice ID on component mount (fallback)
-  useEffect(() => {
-    if (!guestId) {
-      const generateInvoiceId = () => {
-        const timestamp = Date.now().toString(16);
-        const random = Math.random().toString(16).substr(2, 8);
-        setInvoiceId(`${timestamp}-${random}`);
-      };
-      generateInvoiceId();
-    }
-  }, [guestId]);
+  // Removed random invoice generator to avoid non-UUID invoice IDs
 
   // Update payment amount whenever relevant fields change
   useEffect(() => {
@@ -708,10 +700,17 @@ export default function PointOfSale() {
         setGuestCode(data.guest_code);
       }
       
-      // Set guest ID and get or create invoice
+      // Set guest ID and get or create invoice immediately
       if (data?.id) {
         setGuestId(data.id);
-        getOrCreateInvoice(data.id);
+        const created = await getOrCreateInvoice(data.id);
+        if (created?.invoiceId) {
+          setInvoiceId(created.invoiceId);
+          if (created.invoiceNo) setInvoiceNumber(created.invoiceNo);
+        } else {
+          // Fallback: fetch existing invoices if any
+          fetchGuestInvoices(data.id);
+        }
       }
       
       setGuestFound(true);

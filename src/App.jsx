@@ -11,6 +11,8 @@ import ProductsMaster from './components/Masters/products.jsx'
 import GuestLanding from './pages/Guest.jsx'
 import GuestProfile from './pages/GuestProfile.jsx'
 import ServiceCustomData from './pages/ServiceCustomData.jsx'
+import ClientProfileForm from './pages/ClientProfileForm.jsx'
+import SkinHairAnalysis from './pages/SkinHairAnalysis.jsx'
 
 function App() {
   return (
@@ -26,6 +28,8 @@ function App() {
         <Route path="/guest" element={<GuestLanding />} />
         <Route path="/guest-profile/:guestId" element={<GuestProfile />} />
         <Route path="/service-custom-data" element={<ServiceCustomData />} />
+        <Route path="/client-profile-form" element={<ClientProfileForm />} />
+        <Route path="/skin-hair-analysis" element={<SkinHairAnalysis />} />
         <Route path="/pos" element={<PointOfSale />} />
         <Route path="/products-pos" element={<PointOfProducts />} />
       </Routes>
