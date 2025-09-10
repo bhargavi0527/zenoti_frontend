@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-function Header() {
+function Header({ currentUser, onLogout }) {
   const [selectedLocation, setSelectedLocation] = useState('kerala');
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const profileRef = useRef(null);
@@ -31,9 +31,25 @@ function Header() {
     setShowProfileDropdown(!showProfileDropdown);
   };
 
+  const getUserInitials = (user) => {
+    if (!user) return 'U';
+    const firstName = user.first_name || '';
+    const lastName = user.last_name || '';
+    return (firstName.charAt(0) + lastName.charAt(0)).toUpperCase();
+  };
+
+  const getUserFullName = (user) => {
+    if (!user) return 'User';
+    return `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || 'User';
+  };
+
   const handleProfileOptionClick = (option) => {
     console.log(`${option} clicked`);
     setShowProfileDropdown(false);
+    
+    if (option === 'Log Out' && onLogout) {
+      onLogout();
+    }
     // Add specific functionality for each option here
   };
 
@@ -111,7 +127,7 @@ function Header() {
               className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-200 transition-colors duration-200"
               title="Profile"
             >
-              <span className="text-sm font-medium">KS</span>
+              <span className="text-sm font-medium">{getUserInitials(currentUser)}</span>
             </button>
 
             {/* Profile Dropdown */}
@@ -121,10 +137,13 @@ function Header() {
                 <div className="p-4 border-b border-gray-200">
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <span className="text-blue-600 font-medium">KS</span>
+                      <span className="text-blue-600 font-medium">{getUserInitials(currentUser)}</span>
                     </div>
                     <div>
-                      <div className="font-medium text-gray-900">Koyyana Sai Mythree</div>
+                      <div className="font-medium text-gray-900">{getUserFullName(currentUser)}</div>
+                      {currentUser?.email && (
+                        <div className="text-sm text-gray-500">{currentUser.email}</div>
+                      )}
                     </div>
                   </div>
                 </div>

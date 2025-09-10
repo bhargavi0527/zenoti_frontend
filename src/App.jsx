@@ -10,6 +10,7 @@ import ServiceMaster from './components/Masters/service.jsx'
 import ProductsMaster from './components/Masters/products.jsx'
 import GuestLanding from './pages/Guest.jsx'
 import GuestProfile from './pages/GuestProfile.jsx'
+import ServiceCustomData from './pages/ServiceCustomData.jsx'
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Route path="/appointments" element={<Appointments />} />
         <Route path="/guest" element={<GuestLanding />} />
         <Route path="/guest-profile/:guestId" element={<GuestProfile />} />
+        <Route path="/service-custom-data" element={<ServiceCustomData />} />
         <Route path="/pos" element={<PointOfSale />} />
         <Route path="/products-pos" element={<PointOfProducts />} />
       </Routes>

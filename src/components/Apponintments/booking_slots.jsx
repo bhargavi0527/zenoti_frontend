@@ -843,9 +843,15 @@ export default function BookingSlots({
                             className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
                             onClick={() => {
                               setApptMoreBelowOpen(false);
+                              setApptMenu({ open: false, x: 0, y: 0, appt: null });
                               const a = apptMenu.appt;
-                              const serviceName = (a?.services && a.services[0]?.serviceName) || a?.label || '';
-                              alert(`Enter Service Custom Data for: ${serviceName}`);
+                              // Navigate to ServiceCustomData page with appointment data
+                              navigate('/service-custom-data', { 
+                                state: { 
+                                  appointmentData: a,
+                                  fromAppointment: true
+                                } 
+                              });
                             }}
                           >
                             Enter Service Custom Data

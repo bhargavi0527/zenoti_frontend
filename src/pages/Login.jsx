@@ -1,17 +1,72 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 function Login() {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  // Fetch users from API on component mount
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/users/?skip=0&limit=10');
+        if (response.ok) {
+          const userData = await response.json();
+          setUsers(userData);
+        } else {
+          setError('Failed to fetch users');
+        }
+      } catch (err) {
+        setError('Error connecting to server');
+        console.error('Error fetching users:', err);
+      }
+    };
+
+    fetchUsers();
+  }, []);
+
+  const handleLogin = async (e) => {
     e.preventDefault();
-    console.log('Login attempt:', { username, password });
-    // Navigate to admin page after successful login
-    navigate('/admin');
+    setLoading(true);
+    setError('');
+
+    try {
+      // Find user by email
+      const user = users.find(u => u.email === email);
+      
+      console.log('Login attempt:', { email, password, userFound: !!user, usersCount: users.length });
+      
+      if (user) {
+        // For now, we'll use a simple password check
+        // In a real app, you'd hash the password and compare with stored hash
+        // Since the API doesn't return password, we'll use a default for demo
+        const defaultPassword = 'password123'; // You can change this or implement proper auth
+        
+        // Trim whitespace and compare
+        if (password.trim() === defaultPassword) {
+          console.log('Login successful:', user);
+          // Store user data in localStorage for session management
+          localStorage.setItem('currentUser', JSON.stringify(user));
+          navigate('/admin');
+        } else {
+          console.log('Password mismatch:', { entered: password.trim(), expected: defaultPassword });
+          setError('Invalid password. Use: password123');
+        }
+      } else {
+        console.log('User not found for email:', email);
+        setError('User not found. Available emails: ' + users.map(u => u.email).join(', '));
+      }
+    } catch (err) {
+      setError('Login failed');
+      console.error('Login error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -32,14 +87,15 @@ function Login() {
           {/* Login Form */}
           <form className="space-y-6" onSubmit={handleLogin}>
             <div className="space-y-4">
-              {/* Username Field */}
+              {/* Email Field */}
               <div>
                 <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-3 border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Username"
+                  placeholder="Email"
+                  required
                 />
               </div>
 
@@ -51,6 +107,7 @@ function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 pr-12 border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Password"
+                  required
                 />
                 <button
                   type="button"
@@ -83,13 +140,21 @@ function Login() {
               </div>
             </div>
 
+            {/* Error Message */}
+            {error && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                {error}
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex items-center justify-between">
               <button
                 type="submit"
-                className="bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-6 rounded-md transition duration-200"
+                disabled={loading}
+                className="bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 text-white font-medium py-2 px-6 rounded-md transition duration-200"
               >
-                Login
+                {loading ? 'Logging in...' : 'Login'}
               </button>
               <div className="flex space-x-4 text-sm">
                 <a href="#" className="text-blue-600 hover:text-blue-800">

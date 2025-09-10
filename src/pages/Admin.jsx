@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '../components/Layouts/sidebar';
 import Header from '../components/Layouts/Header';
 
@@ -9,6 +9,29 @@ function Admin() {
     year: 'numeric'
   }));
 
+  const [currentUser, setCurrentUser] = useState(null);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
+  useEffect(() => {
+    // Get user data from localStorage
+    const userData = localStorage.getItem('currentUser');
+    if (userData) {
+      setCurrentUser(JSON.parse(userData));
+    }
+  }, []);
+
+  const getUserInitials = (user) => {
+    if (!user) return 'U';
+    const firstName = user.first_name || '';
+    const lastName = user.last_name || '';
+    return (firstName.charAt(0) + lastName.charAt(0)).toUpperCase();
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('currentUser');
+    window.location.href = '/';
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Left Sidebar */}
@@ -17,7 +40,7 @@ function Admin() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <Header />
+        <Header currentUser={currentUser} onLogout={handleLogout} />
 
         {/* Content */}
         <div className="flex-1 p-6 space-y-6">
