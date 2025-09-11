@@ -56,6 +56,12 @@ export default function PointOfSale() {
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [selectedPackage, setSelectedPackage] = useState('');
   const [packagePrice, setPackagePrice] = useState('');
+  const [originalPackagePrice, setOriginalPackagePrice] = useState('');
+  const [packageDiscountAmount, setPackageDiscountAmount] = useState(0);
+  // Offers/Discounts (for memberships dropdown per requirement)
+  const [offers, setOffers] = useState([]);
+  const [offersLoading, setOffersLoading] = useState(false);
+  const [selectedMembershipOfferId, setSelectedMembershipOfferId] = useState('');
   // Payment state
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
@@ -66,6 +72,9 @@ export default function PointOfSale() {
   const [guestId, setGuestId] = useState('');
   const [availableInvoices, setAvailableInvoices] = useState([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
+  // Appointment state
+  const [appointmentId, setAppointmentId] = useState('');
+  const [appointmentLoading, setAppointmentLoading] = useState(false);
 
   const timeOptions = [
     '09:00 AM','09:15 AM','09:30 AM','09:45 AM',
@@ -102,6 +111,9 @@ export default function PointOfSale() {
   const [currentPayment, setCurrentPayment] = useState(null);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
+  // Sales application state
+  const [saleApplying, setSaleApplying] = useState(false);
+  const [saleId, setSaleId] = useState('');
 
   // Function to automatically update payment amount when package or service is selected
   const updatePaymentAmount = () => {
@@ -141,6 +153,147 @@ export default function PointOfSale() {
       totalAmount: newAmount
     });
     setAmount(newAmount);
+  };
+
+  // Apply selected offer by calling sales API and update totals
+  const applyOfferById = async (offerId) => {
+    if (!offerId) return;
+    const offer = offers.find(o => o.id === offerId);
+    if (!offer) return;
+
+    setSaleApplying(true);
+    setPaymentError('');
+    try {
+      // Ensure we have an appointment for this guest
+      const ensuredAppointmentId = await ensureLatestAppointment();
+      if (!ensuredAppointmentId) {
+        throw new Error('Missing latest appointment for guest');
+      }
+      const payload = {
+        item_type: offer.item_type,
+        item_id: offer.item_id,
+        discount_id: offer.id,
+        remarks: offer.description || 'offer applied',
+        appointment_id: ensuredAppointmentId
+      };
+      // Include appointment_id only if available in future
+      const res = await fetch('http://127.0.0.1:8000/sales/', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        throw new Error(`Sale apply failed: ${res.status}`);
+      }
+      const result = await res.json();
+      if (result && result.id) {
+        setSaleId(result.id);
+      }
+      // If this is a package offer, reflect discounted price in the package selection
+      if (offer.item_type === 'package') {
+        const pkg = packages.find(p => p.id === offer.item_id);
+        if (pkg) {
+          setSelectedPackage(pkg.name);
+          const base = typeof pkg.series_package_cost_to_center !== 'undefined' ? Number(pkg.series_package_cost_to_center) : Number(originalPackagePrice) || 0;
+          const net = typeof result.net_value === 'number' ? Number(result.net_value) : Number(packagePrice) || 0;
+          setPackagePrice(String(net));
+          if (!originalPackagePrice) setOriginalPackagePrice(String(base));
+          setPackageDiscountAmount(Math.max(base - net, 0));
+        }
+      }
+      // Update amount directly as a fallback to ensure UI reflects net
+      if (typeof result.net_value === 'number') {
+        setAmount(String(result.net_value.toFixed(2)));
+      }
+    } catch (e) {
+      console.error('Failed to apply offer via sales API', e);
+      // Fallback: compute locally if possible
+      const offer = offers.find(o => o.id === offerId);
+      if (offer && offer.item_type === 'package') {
+        const pkg = packages.find(p => p.id === offer.item_id);
+        const base = pkg && typeof pkg.series_package_cost_to_center !== 'undefined' 
+          ? Number(pkg.series_package_cost_to_center) 
+          : Number(packagePrice) || 0;
+        let net = base;
+        if (offer.discount_type === 'percentage') {
+          net = base - (base * (Number(offer.discount_value) || 0) / 100);
+        } else if (offer.discount_type === 'fixed') {
+          net = base - (Number(offer.discount_value) || 0);
+        }
+        const finalNet = Math.max(net, 0);
+        setPackagePrice(String(finalNet.toFixed(2)));
+        if (!originalPackagePrice) setOriginalPackagePrice(String(base));
+        setPackageDiscountAmount(Math.max(base - finalNet, 0));
+        setAmount(String(finalNet.toFixed(2)));
+      } else {
+        setPaymentError('Failed to apply offer');
+      }
+    } finally {
+      setSaleApplying(false);
+    }
+  };
+
+  // Clear any applied offer/discount and restore base prices
+  const clearAppliedOffer = async () => {
+    try {
+      // Attempt to revoke sale on server if one was created
+      if (saleId) {
+        try {
+          await fetch(`http://127.0.0.1:8000/sales/${saleId}`, { method: 'DELETE', headers: { accept: 'application/json' } });
+        } catch (e) {
+          // ignore server errors while clearing locally
+        }
+      }
+    } finally {
+      setSaleId('');
+      setSelectedMembershipOfferId('');
+      // Restore package price from original package data if available
+      const pkg = packages.find(p => p.name === selectedPackage);
+      if (pkg && typeof pkg.series_package_cost_to_center !== 'undefined') {
+        const base = String(pkg.series_package_cost_to_center);
+        setPackagePrice(base);
+        setOriginalPackagePrice(base);
+      }
+      setPackageDiscountAmount(0);
+      // Recompute amount from current selections
+      setTimeout(() => {
+        updatePaymentAmount();
+      }, 0);
+    }
+  };
+
+  // Fetch the latest appointment id for current guest
+  const ensureLatestAppointment = async () => {
+    if (appointmentId) return appointmentId;
+    if (!guestId) return '';
+    setAppointmentLoading(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/guests/${guestId}/appointments`, {
+        headers: { accept: 'application/json' }
+      });
+      if (!res.ok) return '';
+      const list = await res.json();
+      if (!Array.isArray(list) || list.length === 0) return '';
+      // pick latest by updated_at/created_at/appointment_date
+      const parseDate = (v) => (v ? new Date(v).getTime() : 0);
+      const latest = [...list].sort((a,b)=> (
+        parseDate(b.updated_at) - parseDate(a.updated_at) ||
+        parseDate(b.created_at) - parseDate(a.created_at) ||
+        parseDate(b.appointment_date) - parseDate(a.appointment_date)
+      ))[0];
+      if (latest && latest.id) {
+        setAppointmentId(latest.id);
+        return latest.id;
+      }
+    } catch (e) {
+      // ignore
+    } finally {
+      setAppointmentLoading(false);
+    }
+    return '';
   };
 
   // Function to submit payment to API
@@ -198,9 +351,8 @@ export default function PointOfSale() {
       const paymentData = {
         payment_method: paymentMethod.toUpperCase(),
         amount: parseFloat(amount),
-        reference_no: `TXN${Date.now().toString(16).toUpperCase()}`,
-        remarks: `Payment for ${activeItemTab} - ${selectedPackage || svcName || 'item'}`,
-        invoice_id: invoiceId
+        remarks: `paid by ${paymentMethod}`,
+        sale_id: saleId || undefined
       };
 
       const response = await fetch('http://127.0.0.1:8000/payments/', {
@@ -240,7 +392,14 @@ export default function PointOfSale() {
           package: selectedPackage,
           service: svcName,
           prepaid: prepaidCardNumber,
-          gift: giftCardNumber
+          gift: giftCardNumber,
+          pricing: {
+            package: {
+              base: originalPackagePrice ? Number(originalPackagePrice) : (packagePrice ? Number(packagePrice) : 0),
+              discount: Number(packageDiscountAmount) || 0,
+              net: packagePrice ? Number(packagePrice) : 0,
+            }
+          }
         },
         guest: {
           name: `${firstName} ${lastName}`,
@@ -256,6 +415,24 @@ export default function PointOfSale() {
       
       // Show payment screen
       setShowPaymentScreen(true);
+
+      // If a sale exists, generate invoice number from sale id
+      if (saleId) {
+        try {
+          const gen = await generateInvoiceFromSale(saleId);
+          if (gen && (gen.invoice_no || gen.invoice_id)) {
+            setInvoiceId(gen.invoice_id || invoiceId);
+            if (gen.invoice_no) setInvoiceNumber(gen.invoice_no);
+            setCurrentPayment((prev) => prev ? {
+              ...prev,
+              invoiceId: gen.invoice_id || prev.invoiceId,
+              invoiceNumber: gen.invoice_no || prev.invoiceNumber,
+            } : prev);
+          }
+        } catch (e) {
+          // ignore generation error here
+        }
+      }
       
       // Reset form after successful payment
       setTimeout(() => {
@@ -294,6 +471,20 @@ export default function PointOfSale() {
     } finally {
       setPaymentLoading(false);
     }
+  };
+
+  // Generate an invoice from a sale id
+  const generateInvoiceFromSale = async (saleIdArg) => {
+    if (!saleIdArg) return null;
+    const endpoint = `http://127.0.0.1:8000/invoices/generate/${saleIdArg}`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { accept: 'application/json' },
+      body: ''
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data;
   };
 
   // Function to clear all form data
@@ -469,6 +660,15 @@ export default function PointOfSale() {
 
     setPrintLoading(true);
     try {
+      // Try opening server print endpoint directly in a new tab first
+      const directUrl = `http://127.0.0.1:8000/invoices/${invoiceId}/print`;
+      const opened = window.open(directUrl, '_blank');
+      if (opened) {
+        opened.focus();
+        setPrintLoading(false);
+        return;
+      }
+
       // Try different possible endpoints for invoice printing
       const endpoints = [
         `http://127.0.0.1:8000/invoices/${invoiceId}/download`,
@@ -711,6 +911,8 @@ export default function PointOfSale() {
           // Fallback: fetch existing invoices if any
           fetchGuestInvoices(data.id);
         }
+        // fetch latest appointment for this guest
+        ensureLatestAppointment();
       }
       
       setGuestFound(true);
@@ -763,9 +965,23 @@ export default function PointOfSale() {
         setPackagesLoading(false);
       }
     };
+    const fetchOffers = async () => {
+      try {
+        setOffersLoading(true);
+        const res = await fetch('http://127.0.0.1:8000/offers-discounts/', { headers: { accept: 'application/json' } });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data)) setOffers(data);
+      } catch (e) {
+        console.error('Failed to fetch offers/discounts', e);
+      } finally {
+        setOffersLoading(false);
+      }
+    };
     fetchServices();
     fetchRooms();
     fetchPackages();
+    fetchOffers();
   }, []);
 
   return (
@@ -912,7 +1128,10 @@ export default function PointOfSale() {
                       setSelectedPackage(selectedPkg);
                       const pkg = packages.find(p => p.name === selectedPkg);
                       if (pkg && typeof pkg.series_package_cost_to_center !== 'undefined') {
-                        setPackagePrice(String(pkg.series_package_cost_to_center));
+                        const base = String(pkg.series_package_cost_to_center);
+                        setPackagePrice(base);
+                        setOriginalPackagePrice(base);
+                        setPackageDiscountAmount(0);
                       }
                     }}
                     className="w-60 border rounded px-2 py-1 text-sm"
@@ -933,13 +1152,43 @@ export default function PointOfSale() {
               <div>
                 <div className="text-sm text-gray-700 mb-1">Memberships</div>
                 <div className="flex gap-2 items-center">
-                  <select className="w-60 border rounded px-2 py-1 text-sm">
-                    <option>Select</option>
+                  <select 
+                    className="w-60 border rounded px-2 py-1 text-sm"
+                    value={selectedMembershipOfferId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedMembershipOfferId(val);
+                      if (val) applyOfferById(val);
+                    }}
+                  >
+                    <option value="">{offersLoading ? 'Loading…' : 'Select offer (packages)'}</option>
+                    {offers.filter(o => o.item_type === 'package').map((o) => (
+                      <option key={o.id} value={o.id}>{o.description}</option>
+                    ))}
                   </select>
                   <div className="flex gap-2">
-                    <button className="h-8 w-8 rounded border text-blue-600">▶</button>
-                    <button className="h-8 w-8 rounded border text-blue-600">⟲</button>
-                    <button className="h-8 w-8 rounded border text-blue-600">✕</button>
+                    <button 
+                      className="h-8 w-8 rounded border text-blue-600 disabled:opacity-50"
+                      onClick={() => selectedMembershipOfferId && applyOfferById(selectedMembershipOfferId)}
+                      disabled={!selectedMembershipOfferId || saleApplying}
+                      title="Apply"
+                    >
+                      ▶
+                    </button>
+                    <button 
+                      className="h-8 w-8 rounded border text-blue-600"
+                      onClick={() => selectedMembershipOfferId && applyOfferById(selectedMembershipOfferId)}
+                      title="Re-apply"
+                    >
+                      ⟲
+                    </button>
+                    <button 
+                      className="h-8 w-8 rounded border text-blue-600"
+                      onClick={clearAppliedOffer}
+                      title="Clear discount"
+                    >
+                      ✕
+                    </button>
                   </div>
                 </div>
               </div>
@@ -992,7 +1241,10 @@ export default function PointOfSale() {
                           setSelectedPackage(selectedPkg);
                           const pkg = packages.find(p => p.name === selectedPkg);
                           if (pkg && typeof pkg.series_package_cost_to_center !== 'undefined') {
-                            setPackagePrice(String(pkg.series_package_cost_to_center));
+                            const base = String(pkg.series_package_cost_to_center);
+                            setPackagePrice(base);
+                            setOriginalPackagePrice(base);
+                            setPackageDiscountAmount(0);
                           }
                         }}
                         className="w-72 border rounded px-2 py-1 text-sm bg-white"
@@ -1025,7 +1277,20 @@ export default function PointOfSale() {
                 {activeItemTab === 'membership' && (
                   <div>
                     <div className="text-sm text-gray-700 mb-2">Membership</div>
-                    <input className="w-72 border rounded px-2 py-1 text-sm" placeholder="Select membership" />
+                    <select
+                      className="w-72 border rounded px-2 py-1 text-sm bg-white"
+                      value={selectedMembershipOfferId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedMembershipOfferId(val);
+                        if (val) applyOfferById(val);
+                      }}
+                    >
+                      <option value="">{offersLoading ? 'Loading…' : 'Select offer (packages)'}</option>
+                      {offers.filter(o => o.item_type === 'package').map((o) => (
+                        <option key={o.id} value={o.id}>{o.description}</option>
+                      ))}
+                    </select>
                   </div>
                 )}
                 {activeItemTab === 'prepaid' && (
@@ -1641,9 +1906,9 @@ export default function PointOfSale() {
                   <div className="grid grid-cols-12 gap-2 text-sm py-2 border-b">
                     <div className="col-span-4">{currentPayment.items.package}</div>
                     <div className="col-span-2">1</div>
-                    <div className="col-span-2">₹{packagePrice}</div>
-                    <div className="col-span-2">0.00</div>
-                    <div className="col-span-2">₹{packagePrice}</div>
+                    <div className="col-span-2">₹{(((currentPayment.items.pricing?.package?.base) ?? Number(packagePrice)) || 0).toFixed(2)}</div>
+                    <div className="col-span-2">₹{((currentPayment.items.pricing?.package?.discount ?? 0)).toFixed(2)}</div>
+                    <div className="col-span-2">₹{(((currentPayment.items.pricing?.package?.net) ?? Number(packagePrice)) || 0).toFixed(2)}</div>
                   </div>
                 )}
                 

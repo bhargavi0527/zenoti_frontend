@@ -53,11 +53,21 @@ export default function PointOfProducts() {
   const [printLoading, setPrintLoading] = useState(false);
   // Product cart state
   const [cart, setCart] = useState([]);
+  // Sales application state
+  const [saleApplying, setSaleApplying] = useState(false);
+  const [saleId, setSaleId] = useState('');
+  // Appointment state
+  const [appointmentId, setAppointmentId] = useState('');
+  const [appointmentLoading, setAppointmentLoading] = useState(false);
   // Additional sections state
   const [selectedPackage, setSelectedPackage] = useState('');
   const [packagePrice, setPackagePrice] = useState('');
   const [selectedMembership, setSelectedMembership] = useState('');
   const [membershipPrice, setMembershipPrice] = useState('');
+  // Offers/Discounts (for memberships dropdown per requirement)
+  const [offers, setOffers] = useState([]);
+  const [offersLoading, setOffersLoading] = useState(false);
+  const [selectedMembershipOfferId, setSelectedMembershipOfferId] = useState('');
   const [couponVoucher, setCouponVoucher] = useState('');
   const [comments, setComments] = useState('');
 
@@ -147,13 +157,8 @@ export default function PointOfProducts() {
       const paymentData = {
         payment_method: paymentMethod.toUpperCase(),
         amount: parseFloat(amount),
-        reference_no: `TXN${Date.now().toString(16).toUpperCase()}`,
-        remarks: `Payment for ${[
-          selectedPackage && `package: ${selectedPackage}`,
-          selectedMembership && `membership: ${selectedMembership}`,
-          cart.length > 0 && `products: ${cart.map(item => item.name).join(', ')}`
-        ].filter(Boolean).join(', ')}`,
-        invoice_id: invoiceId
+        remarks: `paid by ${paymentMethod}`,
+        sale_id: saleId || undefined
       };
 
       const response = await fetch('http://127.0.0.1:8000/payments/', {
@@ -204,6 +209,24 @@ export default function PointOfProducts() {
       
       // Show payment screen
       setShowPaymentScreen(true);
+
+      // If a sale exists, generate invoice number from sale id
+      if (saleId) {
+        try {
+          const gen = await generateInvoiceFromSale(saleId);
+          if (gen && (gen.invoice_no || gen.invoice_id)) {
+            setInvoiceId(gen.invoice_id || invoiceId);
+            if (gen.invoice_no) setInvoiceNumber(gen.invoice_no);
+            setCurrentPayment((prev) => prev ? {
+              ...prev,
+              invoiceId: gen.invoice_id || prev.invoiceId,
+              invoiceNumber: gen.invoice_no || prev.invoiceNumber,
+            } : prev);
+          }
+        } catch (e) {
+          // ignore generation error here
+        }
+      }
       
       // Reset form after successful payment
       setTimeout(() => {
@@ -233,6 +256,20 @@ export default function PointOfProducts() {
     } finally {
       setPaymentLoading(false);
     }
+  };
+
+  // Generate an invoice from a sale id
+  const generateInvoiceFromSale = async (saleIdArg) => {
+    if (!saleIdArg) return null;
+    const endpoint = `http://127.0.0.1:8000/invoices/generate/${saleIdArg}`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { accept: 'application/json' },
+      body: ''
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data;
   };
 
   // Function to clear all form data
@@ -371,6 +408,26 @@ export default function PointOfProducts() {
     }
   }, [invoiceId]);
 
+  // Fetch offers/discounts helper
+  const fetchOffers = async () => {
+    try {
+      setOffersLoading(true);
+      const res = await fetch('http://127.0.0.1:8000/offers-discounts/', { headers: { accept: 'application/json' } });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setOffers(data);
+    } catch (e) {
+      console.error('Failed to fetch offers/discounts', e);
+    } finally {
+      setOffersLoading(false);
+    }
+  };
+
+  // Fetch offers/discounts on mount
+  useEffect(() => {
+    fetchOffers();
+  }, []);
+
   // Function to print/download invoice
   const printInvoice = async () => {
     if (!invoiceId) {
@@ -380,6 +437,15 @@ export default function PointOfProducts() {
 
     setPrintLoading(true);
     try {
+      // Try opening server print endpoint directly in a new tab first
+      const directUrl = `http://127.0.0.1:8000/invoices/${invoiceId}/print`;
+      const opened = window.open(directUrl, '_blank');
+      if (opened) {
+        opened.focus();
+        setPrintLoading(false);
+        return;
+      }
+
       // Try different possible endpoints for invoice printing
       const endpoints = [
         `http://127.0.0.1:8000/invoices/${invoiceId}/download`,
@@ -457,6 +523,106 @@ export default function PointOfProducts() {
     } finally {
       setPrintLoading(false);
     }
+  };
+
+  // Apply selected product offer via sales API and reflect net to amount
+  const applyOfferById = async (offerId) => {
+    if (!offerId) return;
+    const offer = offers.find(o => o.id === offerId);
+    if (!offer) return;
+
+    setSaleApplying(true);
+    setPaymentError('');
+    try {
+      const ensuredAppointmentId = await ensureLatestAppointment();
+      if (!ensuredAppointmentId) {
+        throw new Error('Missing latest appointment for guest');
+      }
+      const payload = {
+        item_type: offer.item_type,
+        item_id: offer.item_id,
+        discount_id: offer.id,
+        remarks: offer.description || 'offer applied',
+        appointment_id: ensuredAppointmentId
+      };
+      const res = await fetch('http://127.0.0.1:8000/sales/', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(`Sale apply failed: ${res.status}`);
+      const result = await res.json();
+      // Capture sale id
+      if (result && result.id) {
+        setSaleId(result.id);
+      }
+      // If this offer targets a product, update that product's price in the cart using sale_price and offer discount
+      if (offer.item_type === 'product') {
+        const matching = cart.filter(item => item.id === offer.item_id);
+        if (matching.length === 0) {
+          setPaymentError('Add the product to cart first, then apply the offer.');
+        } else {
+          const target = matching[0];
+          const qty = Math.max(Number(target.quantity) || 1, 1);
+          // find product in loaded products
+          const product = products.find(p => p.id === offer.item_id);
+          const base = Number(product?.sale_price ?? target.price) || 0;
+          let perUnit = base;
+          if (offer.discount_type === 'percentage') {
+            perUnit = base - (base * (Number(offer.discount_value) || 0) / 100);
+          } else if (offer.discount_type === 'fixed') {
+            perUnit = base - (Number(offer.discount_value) || 0);
+          }
+          perUnit = Number(perUnit.toFixed(2));
+          let updatedCart = cart;
+          setCart(prev => {
+            const next = prev.map(it => it.id === offer.item_id ? { ...it, price: perUnit } : it);
+            updatedCart = next;
+            return next;
+          });
+          const newTotal = (updatedCart || []).reduce((sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
+          setAmount(String(newTotal.toFixed(2)));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to apply offer via sales API', e);
+      setPaymentError('Failed to apply offer');
+    } finally {
+      setSaleApplying(false);
+    }
+  };
+
+  // Ensure we have the latest appointment id for current guest
+  const ensureLatestAppointment = async () => {
+    if (appointmentId) return appointmentId;
+    if (!guestId) return '';
+    setAppointmentLoading(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/guests/${guestId}/appointments`, {
+        headers: { accept: 'application/json' }
+      });
+      if (!res.ok) return '';
+      const list = await res.json();
+      if (!Array.isArray(list) || list.length === 0) return '';
+      const parseDate = (v) => (v ? new Date(v).getTime() : 0);
+      const latest = [...list].sort((a,b)=> (
+        parseDate(b.updated_at) - parseDate(a.updated_at) ||
+        parseDate(b.created_at) - parseDate(a.created_at) ||
+        parseDate(b.appointment_date) - parseDate(a.appointment_date)
+      ))[0];
+      if (latest && latest.id) {
+        setAppointmentId(latest.id);
+        return latest.id;
+      }
+    } catch (e) {
+      // ignore
+    } finally {
+      setAppointmentLoading(false);
+    }
+    return '';
   };
 
   // Fallback function to create a simple invoice PDF
@@ -607,6 +773,8 @@ export default function PointOfProducts() {
       if (data?.id) {
         setGuestId(data.id);
         getOrCreateInvoice(data.id);
+        // also try to get latest appointment
+        ensureLatestAppointment();
       }
       
       setGuestFound(true);
@@ -774,19 +942,42 @@ export default function PointOfProducts() {
               <div className="text-sm text-gray-700 mb-1">Memberships</div>
               <div className="flex gap-2 items-center">
                 <select 
-                  value={selectedMembership} 
-                  onChange={(e) => setSelectedMembership(e.target.value)}
+                  value={selectedMembershipOfferId} 
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedMembershipOfferId(val);
+                    if (val) applyOfferById(val);
+                  }}
                   className="w-60 border rounded px-2 py-1 text-sm"
                 >
-                  <option value="">Select</option>
-                  <option value="monthly">Monthly Membership</option>
-                  <option value="quarterly">Quarterly Membership</option>
-                  <option value="yearly">Yearly Membership</option>
+                  <option value="">{offersLoading ? 'Loading…' : 'Select offer (products)'}</option>
+                  {offers.filter(o => o.item_type === 'product').map((o) => (
+                    <option key={o.id} value={o.id}>{o.description}</option>
+                  ))}
                 </select>
                 <div className="flex gap-2">
-                  <button className="h-8 w-8 rounded border text-blue-600">▶</button>
-                  <button className="h-8 w-8 rounded border text-blue-600">⟲</button>
-                  <button className="h-8 w-8 rounded border text-blue-600">✕</button>
+                  <button 
+                    className="h-8 w-8 rounded border text-blue-600"
+                    title="Apply selected offer"
+                    disabled={!selectedMembershipOfferId || saleApplying}
+                    onClick={() => selectedMembershipOfferId && applyOfferById(selectedMembershipOfferId)}
+                  >
+                    ▶
+                  </button>
+                  <button 
+                    className="h-8 w-8 rounded border text-blue-600"
+                    title="Refresh offers"
+                    onClick={fetchOffers}
+                  >
+                    ⟲
+                  </button>
+                  <button 
+                    className="h-8 w-8 rounded border text-blue-600"
+                    title="Clear offer"
+                    onClick={() => { setSelectedMembershipOfferId(''); setPaymentError(''); updatePaymentAmount(); }}
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
             </div>
@@ -1117,7 +1308,10 @@ export default function PointOfProducts() {
               )}
 
               <button 
-                onClick={submitPayment}
+                onClick={async () => {
+                  // If we have a sale id from offer application, prefer that in payments API
+                  await submitPayment();
+                }}
                 disabled={paymentLoading}
                 className={`px-4 py-2 rounded text-sm ${
                   paymentLoading 
@@ -1390,45 +1584,9 @@ export default function PointOfProducts() {
 }
 
 function ProductSalesTab({ cart, setCart }) {
-  // Mock product data
-  const products = [
-    {
-      id: 'p1',
-      name: 'Vitamin C Serum',
-      price: 1200,
-      stock: 15,
-    },
-    {
-      id: 'p2',
-      name: 'Aloe Vera Gel',
-      price: 800,
-      stock: 30,
-    },
-    {
-      id: 'p3',
-      name: 'Sunscreen SPF 50',
-      price: 950,
-      stock: 20,
-    },
-    {
-      id: 'p4',
-      name: 'Hair Shampoo',
-      price: 450,
-      stock: 25,
-    },
-    {
-      id: 'p5',
-      name: 'Face Cream',
-      price: 750,
-      stock: 18,
-    },
-    {
-      id: 'p6',
-      name: 'Body Lotion',
-      price: 650,
-      stock: 22,
-    },
-  ];
+  // Products from API; use sale_price as price
+  const [products, setProducts] = React.useState([]);
+  const [productsLoading, setProductsLoading] = React.useState(false);
   
   const [selectedProductId, setSelectedProductId] = React.useState('');
   const [quantity, setQuantity] = React.useState(1);
@@ -1436,11 +1594,29 @@ function ProductSalesTab({ cart, setCart }) {
 
   const selectedProduct = products.find(p => p.id === selectedProductId);
 
+  React.useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setProductsLoading(true);
+        const res = await fetch('http://127.0.0.1:8000/products/', { headers: { accept: 'application/json' } });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data)) setProducts(data);
+      } catch (e) {
+        console.error('Failed to fetch products', e);
+      } finally {
+        setProductsLoading(false);
+      }
+    };
+    fetchProducts();
+  }, []);
+
   // Add product to cart
   const addToCart = () => {
     if (!selectedProduct || quantity < 1) return;
     
-    const price = customPrice ? parseFloat(customPrice) : selectedProduct.price;
+    const basePrice = Number(selectedProduct?.sale_price) || 0;
+    const price = customPrice ? parseFloat(customPrice) : basePrice;
     
     setCart(prev => {
       const existing = prev.find(item => item.id === selectedProduct.id);
@@ -1490,10 +1666,10 @@ function ProductSalesTab({ cart, setCart }) {
               onChange={(e) => setSelectedProductId(e.target.value)}
               className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="">Choose a product...</option>
+              <option value="">{productsLoading ? 'Loading…' : 'Choose a product...'}</option>
               {products.map(product => (
                 <option key={product.id} value={product.id}>
-                  {product.name} - ₹{product.price} (Stock: {product.stock})
+                  {product.name} - ₹{product.sale_price}
                 </option>
               ))}
             </select>
@@ -1504,7 +1680,7 @@ function ProductSalesTab({ cart, setCart }) {
           <input
             type="number"
               min="1"
-              max={selectedProduct?.stock || 0}
+              max={99}
             value={quantity}
               onChange={(e) => setQuantity(Number(e.target.value) || 1)}
               className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -1519,7 +1695,7 @@ function ProductSalesTab({ cart, setCart }) {
               min="0"
               value={customPrice}
               onChange={(e) => setCustomPrice(e.target.value)}
-              placeholder={selectedProduct ? `Default: ₹${selectedProduct.price}` : ''}
+              placeholder={selectedProduct ? `Default: ₹${selectedProduct.sale_price}` : ''}
               className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
