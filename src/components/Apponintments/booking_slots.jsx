@@ -190,6 +190,52 @@ export default function BookingSlots({
   const [apptMoreOpen, setApptMoreOpen] = useState(false);
   const [apptMoreBelowOpen, setApptMoreBelowOpen] = useState(false);
 
+  // Status management for appointments
+  const [localStatusById, setLocalStatusById] = useState({});
+  const [statusUpdatingId, setStatusUpdatingId] = useState('');
+  const [statusMessageById, setStatusMessageById] = useState({});
+  const [statusErrorById, setStatusErrorById] = useState({});
+
+  const statusOptions = [
+    { label: 'New', value: 'new' },
+    { label: 'Scheduled', value: 'scheduled' },
+    { label: 'Confirmed', value: 'confirmed' },
+    { label: 'Check In', value: 'checkin' },
+    { label: 'Not Confirmed', value: 'not_confirmed' },
+    { label: 'Paid', value: 'paid' },
+    { label: 'Cancelled', value: 'cancelled' }
+  ];
+
+  const normalizeStatus = (s) => (s || '').toString().trim().toLowerCase();
+  const getCurrentStatus = (a) => localStatusById[a.id] ?? normalizeStatus(a.appointment_status);
+
+  const updateAppointmentStatus = async (appointmentId, statusValue) => {
+    if (!appointmentId || !statusValue) return;
+    setStatusUpdatingId(appointmentId);
+    setStatusErrorById((prev) => ({ ...prev, [appointmentId]: '' }));
+    setStatusMessageById((prev) => ({ ...prev, [appointmentId]: '' }));
+    try {
+      const endpoint = `http://127.0.0.1:8000/appointments/${appointmentId}/status?status=${encodeURIComponent(statusValue)}`;
+      const res = await fetch(endpoint, { method: 'PATCH', headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error(`Failed to update status: ${res.status}`);
+      const data = await res.json();
+      const updated = normalizeStatus(data.appointment_status || statusValue);
+      setLocalStatusById((prev) => ({ ...prev, [appointmentId]: updated }));
+      // Do not show success message in UI; keep silent success.
+      setApptMenu((m) => (m.open && m.appt && m.appt.id === appointmentId ? { ...m, appt: { ...m.appt, appointment_status: updated, updated_at: data.updated_at || m.appt.updated_at } } : m));
+      // Close any open popover/menu and navigate back to booking slots view
+      setPinnedInfoId(null);
+      setInfoApptId(null);
+      setApptMenu({ open: false, x: 0, y: 0, appt: null, w: 420 });
+      // Redirect to booking slots (appointments) page
+      navigate('/appointments');
+    } catch (e) {
+      setStatusErrorById((prev) => ({ ...prev, [appointmentId]: e.message || 'Failed to update status' }));
+    } finally {
+      setStatusUpdatingId('');
+    }
+  };
+
   // Resize by dragging (horizontal) state
   const [resizing, setResizing] = useState({ active: false, appt: null, startX: 0, containerW: 1, initialSlots: 0, currentSlots: 0 });
   const overlayRef = useRef(null);
@@ -723,15 +769,25 @@ export default function BookingSlots({
                   <div className="p-4 text-sm text-gray-900" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-gray-600">Service details</span>
-                      <select className="ml-auto text-xs border rounded px-2 py-1 bg-white">
-                        <option>New</option>
-                        <option>Check In</option>
-                        <option>Confirm</option>
-                        <option>Start</option>
-                        <option>Complete</option>
-                        <option>Cancel</option>
-                        <option>No Show</option>
+                      <select
+                        className="ml-auto text-xs border rounded px-2 py-1 bg-white"
+                        value={getCurrentStatus(a) || 'new'}
+                        onChange={(e) => updateAppointmentStatus(a.id, e.target.value)}
+                        disabled={statusUpdatingId === a.id}
+                        title={statusUpdatingId === a.id ? 'Updating…' : 'Change status'}
+                      >
+                        {statusOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
                       </select>
+                      {statusUpdatingId === a.id && (
+                        <span className="text-[11px] text-gray-500 ml-2">Updating…</span>
+                      )}
+                      {statusErrorById[a.id] && (
+                        <span className={`text-[11px] ml-2 text-red-600`}>
+                          {statusErrorById[a.id]}
+                        </span>
+                      )}
                       <button className="p-1 hover:bg-gray-100 rounded" title="Edit" onClick={() => { onEditAppointment(a); setApptMenu({ open: false, x: 0, y: 0, appt: null }); }}>
                         <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 20h9" stroke="currentColor" fill="none" strokeWidth="2"/><path d="M16.5 3.5l4 4L7 21H3v-4z" stroke="currentColor" fill="none" strokeWidth="2"/></svg>
                       </button>
